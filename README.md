@@ -1,7 +1,7 @@
 # Framework for reasoning about parallel algorithms
 **Important** This project is in very early stages
 ## Motivation
-Multithreaded algorithms can be very hard to reason about. For simple problems, many developers are able to somehow "see" that the code is correct, but precise argumentations or even formal proofs are much more difficult, even for the simplest of problems.
+Multithreaded algorithms can be very hard to reason about. For simple problems, many developers are able to somehow "see" that the code is correct, but precise argumentation or even formal proofs are much more difficult, even for the simplest of problems.
 #### Sample 1
 Let us consider the following very simple example
 ```typescript
@@ -9,11 +9,11 @@ let x : atomic<int> = 0; // Assuming sequential consistency
 let y : atmoic<int> = 0; // Assuming sequential consistency
 
 function thread1() {
-	++x;            // atomic increment
-	++y;            // atomic increment
-	const py = y;   // atomic read
-	const px = x;   // atomic read
-	assert(x ≥ y);
+  ++x;            // atomic increment
+  ++y;            // atomic increment
+  const py = y;   // atomic read
+  const px = x;   // atomic read
+  assert(x ≥ y);
 }
 ```
 The above code is correct: Spawning a (reasonable) number of those threads in parallel will never panic. Obviously, spawning several billion of those threads might panic due to new cases introduced by integer overflow.
@@ -21,15 +21,15 @@ The above code is correct: Spawning a (reasonable) number of those threads in pa
 We can make the sample above a little more complicated but adding a second type of thread. It is supposed to be spawned alongside `thread1`
 ```typescript
 function thread2() {
-	++x;
-	++x;
-	++y;
-	++x;
-	++y;
-	++y;
-	const py = y;   // atomic read
-	const px = x;   // atomic read
-	assert(x ≥ y);
+  ++x;
+  ++x;
+  ++y;
+  ++x;
+  ++y;
+  ++y;
+  const py = y;   // atomic read
+  const px = x;   // atomic read
+  assert(x ≥ y);
 }
 ```
 We can spawn any number of `thread1` and `thread2` and none of them will panic (again, ignoring integer overflows for now)
