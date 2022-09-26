@@ -13,7 +13,7 @@ function thread1() {
   ++y;            // atomic increment
   const py = y;   // atomic read
   const px = x;   // atomic read
-  assert(x ≥ y);
+  assert(px ≥ py);
 }
 ```
 The above code is correct: Spawning a (reasonable) number of those threads in parallel will never panic. Obviously, spawning several billion of those threads might panic due to new cases introduced by integer overflow.
@@ -29,7 +29,7 @@ function thread2() {
   ++y;
   const py = y;   // atomic read
   const px = x;   // atomic read
-  assert(x ≥ y);
+  assert(px ≥ py);
 }
 ```
 We can spawn any number of `thread1` and `thread2` and none of them will panic (again, ignoring integer overflows for now)
