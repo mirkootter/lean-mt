@@ -18,7 +18,7 @@ function thread1() {
 ```
 The above code is correct: Spawning a (reasonable) number of those threads in parallel will never panic. Obviously, spawning several billion of those threads might panic due to new cases introduced by integer overflow.
 #### Sample 2
-We can make the sample above a little more complicated but adding a second type of thread. It is supposed to be spawned alongside `thread1`
+We can make the sample above a little more complicated by adding a second type of thread. It is supposed to be spawned alongside `thread1`
 ```typescript
 function thread2() {
   ++x;
@@ -45,4 +45,4 @@ We develop a system based on invariants: Designing some rules, we use the follow
 
 > If all threads are following the same rules, we can focus our reasoning on one thread at a time. We have to prove that the current thread respects the rules, assuming the other threads do the same.
 
-This idea is formalized. We develop a very general type of invariant and provide tools to specify threads and reason about them. The provide a central soundness theorem to justify the intuition above: Given any number of threads which respects a given invariant, the whole system will respect it.
+This idea is formalized. We develop a very general type of invariant and provide tools to specify threads and reason about them. We provide a central soundness theorem to justify the intuition above: Given any number of threads which respects a given invariant, the whole system will respect it.
