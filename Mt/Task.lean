@@ -1,4 +1,13 @@
+-- Utils
+theorem forall_ext {α : Type} {f g : α -> Prop}
+  (h : ∀ a : α, f a = g a) : (∀ a : α, f a) = (∀ a : α, g a) :=by
+  apply propext
+  constructor <;> intro h' a
+  . exact Eq.mp (h a) (h' a)
+  . exact Eq.mpr (h a) (h' a)
+
 namespace Mt
+
 
 /-- Class to represent 'scores'
 
@@ -63,7 +72,7 @@ structure Spec where
   State : Type
   Score : Type
   [is_score : IsScore Score]
-  validate : State -> Score -> Prop
+  validate : Score -> State -> Prop
   
 namespace impl
 private inductive Step (spec : Spec) (T : Type) where
@@ -76,6 +85,13 @@ private def Step.chain {spec : Spec} {U V : Type} :
   | Done score state u, f => Continuation score state (f u)
   | Panic score state msg, _ => Panic score state msg
   | Continuation score state cont, f => Continuation score state (fun score s => chain (cont score s) f)
+
+private def Step.valid {T : Type} : Step spec T -> Prop
+  | Done score state _ => spec.validate score state
+  | Panic .. => False
+  | Continuation score state cont =>
+    (spec.validate score state) ∧ ∀ state' : spec.State, spec.validate score state' → valid (cont score state')
+
 end impl
 
 /-- Represents a single task which can be iterated one atomic operation at a time -/
@@ -169,6 +185,41 @@ theorem iterate_bind {U V : Type}
     intro score0 s0
     simp only [Bind.bind, bind, iterate, impl.step_to_iteration_result]
     cases mu score0 s0 <;> rfl
+
+/-- A thread is called valid for a given score if and only if it does not panic and
+  respects the invariant `spec.validate` in this and all following iterations.
+  
+  During each iteration, the environment provides a score and a state. A valid thread
+  is only required to enforce the invariant if the environment behaves correctly:
+  * the environment must not change the score; the provided score has to be the exactly
+    the score which was returned by the previous iteration of this thread
+  * the environment must only provide valid combinations for state and score
+
+  **Note** If there is no valid state given the current score, the environment cannot
+    provide a matching state, i.e. the thread will not be called anymore. Hence,
+    we call the thread valid in this case: Whatever it would do does not matter,
+    it cannot break anything we want to reason about
+  
+  **Note** This definition uses internal implementation details and should not
+    be unfolded. Use the `valid_for_score.def` theorem instead.
+-/
+def valid_for_score {T : Type} (task : TaskM spec T) (score : spec.Score) : Prop :=
+  ∀ state : spec.State, spec.validate score state →
+  impl.Step.valid (task score state)
+
+/-- Main theorem to justify the definition of `valid_for_score` -/
+theorem valid_for_score.def {T : Type} (task : TaskM spec T) (score : spec.Score) :
+  task.valid_for_score score =
+    ∀ state : spec.State, spec.validate score state → 
+    match task.iterate score state with
+      | IterationResult.Done score' state' _ => spec.validate score' state'
+      | IterationResult.Panic .. => False
+      | IterationResult.Continuation score' state' cont =>
+        (spec.validate score' state') ∧ cont.valid_for_score score' :=by
+  simp only [iterate, Mt.impl.step_to_iteration_result, valid_for_score]
+  apply forall_ext
+  intro state
+  cases task score state <;> simp only [Mt.impl.Step.valid]
 
 end TaskM
 
