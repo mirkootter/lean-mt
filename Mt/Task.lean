@@ -132,5 +132,44 @@ def IterationResult.score {T : Type} : IterationResult spec T -> spec.Score
   | Panic score .. => score
   | Continuation score .. => score
 
+private def _root_.Mt.impl.step_to_iteration_result {T : Type} :
+  impl.Step spec T -> IterationResult spec T
+    | impl.Step.Done score state t => IterationResult.Done score state t
+    | impl.Step.Panic score state msg => IterationResult.Panic score state msg
+    | impl.Step.Continuation score state cont => IterationResult.Continuation score state cont
+
+instance : Monad (TaskM spec) where
+  pure :=pure
+  bind :=bind
+
+/-- iterates a given `TaskM` one atomic step -/
+def iterate {T : Type} (p : TaskM spec T) (score : spec.Score) (state : spec.State) :
+  IterationResult spec T :=impl.step_to_iteration_result <| p score state
+
+/-- Iterating a pure `TaskM` yields `IterationResult.Done` with the provided constant.
+  Neither state nor score are modified. -/
+theorem iterate_pure {T : Type} : ∀ (score : spec.Score) (state : spec.State) (t : T),
+  (pure t).iterate score state = IterationResult.Done score state t :=by intros; rfl
+
+/-- Iteration of `a >>= b` iterates `a`.
+
+  If this does not panic, the result will contain a continuation:
+  * As long as `a` is not done, future iteration will still iterate on `a`
+  * As soon as `a` is done with result `u`, the next iteration will iterate on `b u`
+-/
+theorem iterate_bind {U V : Type}
+  (mu : TaskM spec U)
+  (f : U -> TaskM spec V)
+  : ∀ (score0 : spec.Score) (s0 : spec.State),
+    (mu >>= f).iterate score0 s0 = match mu.iterate score0 s0 with
+    | IterationResult.Done score1 s1 u => IterationResult.Continuation score1 s1 (f u)
+    | IterationResult.Panic score1 s1 msg => IterationResult.Panic score1 s1 msg
+    | IterationResult.Continuation score1 s1 cont =>
+      IterationResult.Continuation score1 s1 (cont.bind f) :=by
+    intro score0 s0
+    simp only [Bind.bind, bind, iterate, impl.step_to_iteration_result]
+    cases mu score0 s0 <;> rfl
 
 end TaskM
+
+end Mt
