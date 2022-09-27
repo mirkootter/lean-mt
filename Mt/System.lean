@@ -145,15 +145,39 @@ theorem reduces_to_or_eq.trans {a b c : System spec} :
 -/
 def valid (s : System spec) : Prop :=
   ∀ s' : System spec, s.reduces_to_or_eq s' →
-  s'.panics = 0 ∧ spec.validate s.reservations s.state
+  s'.panics = 0 ∧ spec.validate s'.reservations s'.state
 
 theorem fundamental_validation_theorem (s : System spec)
   (no_panics_yet : s.panics = 0)
   (initial_valid : spec.validate s.reservations s.state)
   (threads_valid : ∀ idx : s.ThreadIndex, (s.threads.get idx).valid)
   : s.valid :=by
-  sorry
+  intro s' s_reduces_or_eq_to_s'
+  cases s_reduces_or_eq_to_s' <;> rename_i h
+  . rw [<- h]
+    exact ⟨no_panics_yet, initial_valid⟩
+  
+  suffices
+    (∀ idx : s'.ThreadIndex, (s'.threads.get idx).valid) ∧
+    s'.panics = 0 ∧ Spec.validate spec (reservations s') s'.state
+     from this.right
 
+  induction h
+  . clear s s' ; rename_i s s' s_reduces_or_eq_to_s'
+    --rw [reduces_single] at s_reduces_or_eq_to_s' 
+    apply Exists.elim s_reduces_or_eq_to_s'
+    intro thread_idx h
+    rw [<- h] ; clear h
+    constructor
+    . -- TODO: Show that threads are still valid after the iteration
+      
+      sorry
+    constructor
+    . sorry
+    . sorry
+  . rename_i IHab IHbc
+    have :=IHab no_panics_yet initial_valid threads_valid
+    exact IHbc this.right.left this.right.right this.left
 
 end System
 
