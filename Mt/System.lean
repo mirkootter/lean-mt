@@ -21,22 +21,42 @@ def valid (thread : Thread spec) : Prop :=
   thread.task.valid_for_reservation thread.reservation
 
 inductive IterationResult (spec : Spec) where
-  | Done : spec.State -> IterationResult spec
-  | Panic : spec.State -> IterationResult spec
+  | Done : spec.Reservation -> spec.State -> IterationResult spec
+  | Panic : spec.Reservation -> spec.State -> IterationResult spec
   | Running : spec.State -> Thread spec -> IterationResult spec
 
 def IterationResult.state : IterationResult spec -> spec.State
-  | Done state => state
-  | Panic state => state
+  | Done _ state => state
+  | Panic _ state => state
   | Running state _ => state
+
+def IterationResult.reservation : IterationResult spec -> spec.Reservation
+  | Done r _ => r
+  | Panic r _ => r
+  | Running _ cont => cont.reservation
 
 def iterate : Thread spec -> spec.State -> IterationResult spec
   | ⟨T, r, task⟩, state =>
     match task.iterate r state with
-    | TaskM.IterationResult.Done _ state' _ => IterationResult.Done state'
-    | TaskM.IterationResult.Panic _ state' _ => IterationResult.Panic state'
+    | TaskM.IterationResult.Done r state' _ => IterationResult.Done r state'
+    | TaskM.IterationResult.Panic r state' _ => IterationResult.Panic r state'
     | TaskM.IterationResult.Continuation reservation state' task => 
       IterationResult.Running state' { T, reservation, task }
+
+theorem valid.def (thread : Thread spec) :
+  thread.valid = 
+    ∀ (state : spec.State) (env_r : spec.Reservation),
+    spec.validate (env_r + thread.reservation) state →
+    match thread.iterate state with
+      | IterationResult.Done r' state' => spec.validate (env_r + r') state'
+      | IterationResult.Panic .. => False
+      | IterationResult.Running state' cont =>
+        (spec.validate (env_r + cont.reservation) state') ∧ cont.valid :=by
+  simp only [valid, iterate]
+  rw [TaskM.valid_for_reservation.def]
+  apply forall_ext ; intro state
+  apply forall_ext ; intro env_r
+  cases TaskM.iterate thread.task thread.reservation state <;> simp only []
 
 end Thread
 
@@ -99,13 +119,13 @@ theorem decompose_reservation (s : System spec) (thread_idx : s.ThreadIndex) :
 def iterate (s : System spec) : s.ThreadIndex -> System spec
   | thread_idx =>
     match (s.threads.get thread_idx).iterate s.state with
-      | Thread.IterationResult.Done state =>
+      | Thread.IterationResult.Done _ state =>
         {
           state
           threads := s.threads.eraseIdx thread_idx.val
           panics := s.panics
         }
-      | Thread.IterationResult.Panic state =>
+      | Thread.IterationResult.Panic _ state =>
         {
           state
           threads := s.threads.eraseIdx thread_idx.val
@@ -117,7 +137,7 @@ def iterate (s : System spec) : s.ThreadIndex -> System spec
           threads := s.threads.set thread_idx.val thread
           panics := s.panics
         }
-
+      
 def reduces_single (a b : System spec) : Prop :=
   ∃ idx : a.ThreadIndex, a.iterate idx = b
 
@@ -133,6 +153,38 @@ theorem reduces_to_or_eq.trans {a b c : System spec} :
   . rw [h₁] ; exact Or.inr h₂
   . rw [h₂.symm] ; exact Or.inr h₁
   . exact Or.inr <| TC.trans a b c h₁ h₂
+
+-- TODO: Is there a simpler way to prove this?
+theorem single_reduce_get {s s' : System spec} (r : s.reduces_single s') :
+  ∀ i : s'.ThreadIndex, ∃ (j : s.ThreadIndex) (state : spec.State),
+  s.threads.get j = s'.threads.get i ∨
+  (s.threads.get j).iterate s.state = Thread.IterationResult.Running state (s'.threads.get i) :=by
+  intro i
+  apply Exists.elim r ; intro thread_idx h
+  simp only [iterate] at h
+  cases h' : Thread.iterate (List.get s.threads thread_idx) s.state
+  all_goals (
+    simp only [h'] at h ; clear h'
+    have :=Eq.symm <| congrArg (λ (s : System spec) => s.threads) h
+    simp only [] at this
+    clear h
+  )
+  . have :=list_helper s.threads s'.threads thread_idx.val this i
+    apply this.elim ; intro j h ; exists j
+    exists s.state
+    exact Or.inl h.symm
+  . have :=list_helper s.threads s'.threads thread_idx.val this i
+    apply this.elim ; intro j h ; exists j
+    exists s.state
+    exact Or.inl h.symm
+  . cases Decidable.em (thread_idx.val = i.val) <;> rename_i h
+    . rw [h] at this
+      
+      sorry
+    . sorry
+where
+  list_helper {T : Type 1} (l l' : List T) (e : Nat) (h : l' = l.eraseIdx e) :
+    ∀ i : Fin l'.length, ∃ j : Fin l.length, l'.get i = l.get j :=sorry
 
 /-- Central validation predicate for reasoning about systems.
 
@@ -163,15 +215,20 @@ theorem fundamental_validation_theorem (s : System spec)
      from this.right
 
   induction h
-  . clear s s' ; rename_i s s' s_reduces_or_eq_to_s'
-    --rw [reduces_single] at s_reduces_or_eq_to_s' 
-    apply Exists.elim s_reduces_or_eq_to_s'
-    intro thread_idx h
-    rw [<- h] ; clear h
+  . clear s s' ; rename_i s s' s_single_reduces_to_s'
     constructor
-    . -- TODO: Show that threads are still valid after the iteration
-      
-      sorry
+    . intro i
+      apply Exists.elim <| single_reduce_get s_single_reduces_to_s' i
+      intro j h
+      apply Exists.elim h ; clear h ; intro state h
+      apply Or.elim h <;> (clear h ; intro h)
+      . rw [<- h] ; exact threads_valid j
+      . have :=threads_valid j
+        have :=(Thread.valid.def (List.get s.threads j)).mp this s.state (s.other_reservations j)
+        rw [h] at this
+        simp only [] at this
+        rw [<- decompose_reservation s j] at this
+        exact (this initial_valid).right
     constructor
     . sorry
     . sorry
