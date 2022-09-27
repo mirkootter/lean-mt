@@ -67,12 +67,19 @@ class IsReservation (T : Type)
     empty : T
     empty_add : ∀ t : T, empty + t = t
 
+/-- Specification for a multithreading system
 
+  This specification specifies the context for threads but not the
+  threads itself. Threads encode a specification in their type. Only
+  threads with the same specification can be exected in parallel
+-/
 structure Spec where
   State : Type
   Reservation : Type
   [is_reservation : IsReservation Reservation]
   validate : Reservation -> State -> Prop
+  reservations_can_be_dropped : -- if a thread drops its reservation, it should not break the system
+    ∀ (r r' : Reservation) (state : State), validate (r + r') state → validate r state
   
 namespace impl
 
