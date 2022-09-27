@@ -75,22 +75,34 @@ structure Spec where
   validate : Reservation -> State -> Prop
   
 namespace impl
+
 private inductive Step (spec : Spec) (T : Type) where
   | Done : spec.Reservation -> spec.State -> T -> Step spec T
   | Panic : spec.Reservation -> spec.State -> String -> Step spec T
-  | Continuation : spec.Reservation -> spec.State -> (spec.Reservation -> spec.State -> Step spec T) -> Step spec T
+  | Continuation : spec.Reservation -> spec.State -> (spec.Reservation -> spec.State -> Step spec T)
+    -> Step spec T
 
 private def Step.chain {spec : Spec} {U V : Type} :
   Step spec U -> (U -> spec.Reservation -> spec.State -> Step spec V) -> Step spec V
   | Done reservation state u, f => Continuation reservation state (f u)
   | Panic reservation state msg, _ => Panic reservation state msg
-  | Continuation reservation state cont, f => Continuation reservation state (fun reservation s => chain (cont reservation s) f)
+  | Continuation reservation state cont, f =>
+    Continuation reservation state (fun reservation s => chain (cont reservation s) f)
 
-private def Step.valid {T : Type} : Step spec T -> Prop
-  | Done reservation state _ => spec.validate reservation state
-  | Panic .. => False
-  | Continuation reservation state cont =>
-    (spec.validate reservation state) ∧ ∀ state' : spec.State, spec.validate reservation state' → valid (cont reservation state')
+variable {spec : Spec}
+local instance : IsReservation spec.Reservation :=spec.is_reservation
+
+private def Step.valid {T : Type} : Step spec T -> spec.Reservation -> Prop
+  | Done reservation state _, env_reservation =>
+    spec.validate (env_reservation + reservation) state
+  | Panic .., _ => False
+  | Continuation reservation state cont, env_reservation =>
+    (spec.validate (env_reservation + reservation) state) ∧
+    ∀ (state' : spec.State) (env_reservation' : spec.Reservation),
+      (spec.validate
+        (env_reservation' + reservation)
+        state')
+      → valid (cont reservation state') env_reservation'
 
 end impl
 
@@ -101,6 +113,7 @@ namespace TaskM
 open impl
 
 variable {spec : Spec}
+local instance : IsReservation spec.Reservation :=spec.is_reservation
 
 def pure {T : Type} (t : T) : TaskM spec T :=fun reservation state => Step.Done reservation state t
 def bind {U V : Type} (mu : TaskM spec U) (f : U -> TaskM spec V) : TaskM spec V :=
@@ -204,18 +217,21 @@ theorem iterate_bind {U V : Type}
     be unfolded. Use the `valid_for_reservation.def` theorem instead.
 -/
 def valid_for_reservation {T : Type} (task : TaskM spec T) (reservation : spec.Reservation) : Prop :=
-  ∀ state : spec.State, spec.validate reservation state →
-  impl.Step.valid (task reservation state)
+  ∀ (state : spec.State) (env_r : spec.Reservation),
+  spec.validate (env_r + reservation) state →
+  impl.Step.valid (task reservation state) env_r
 
 /-- Main theorem to justify the definition of `valid_for_reservation` -/
 theorem valid_for_reservation.def {T : Type} (task : TaskM spec T) (reservation : spec.Reservation) :
   task.valid_for_reservation reservation =
-    ∀ state : spec.State, spec.validate reservation state → 
+    ∀ (state : spec.State) (env_r : spec.Reservation),
+    spec.validate (env_r + reservation) state →
     match task.iterate reservation state with
-      | IterationResult.Done reservation' state' _ => spec.validate reservation' state'
+      | IterationResult.Done reservation' state' _ => spec.validate (env_r + reservation') state'
       | IterationResult.Panic .. => False
       | IterationResult.Continuation reservation' state' cont =>
-        (spec.validate reservation' state') ∧ cont.valid_for_reservation reservation' :=by
+        (spec.validate (env_r + reservation') state') ∧
+        cont.valid_for_reservation reservation' :=by
   simp only [iterate, Mt.impl.step_to_iteration_result, valid_for_reservation]
   apply forall_ext
   intro state
