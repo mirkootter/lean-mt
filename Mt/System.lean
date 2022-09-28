@@ -105,13 +105,18 @@ def reservations (s : System spec) : spec.Reservation :=
 def other_reservations (s : System spec) (thread_idx : s.ThreadIndex) : spec.Reservation :=
   System.sum_reservations <| s.threads.eraseIdx thread_idx.val
 
-theorem decompose_reservation (s : System spec) (thread_idx : s.ThreadIndex) :
-  s.reservations = (s.other_reservations thread_idx) + (s.threads.get thread_idx).reservation :=by
+theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s.threads) :
+  ∃ idx : s.ThreadIndex, s.threads.get idx = t ∧
+  s.reservations = (s.other_reservations idx) + t.reservation :=by
+  let thread_idx : s.ThreadIndex :=s.threads.index_of t_def
   suffices
     ∀ (l : List <| Thread spec) (idx : Fin l.length),
-    System.sum_reservations l = System.sum_reservations (l.eraseIdx idx.val) + (l.get idx).reservation from
-    this s.threads thread_idx
-  clear s thread_idx
+    System.sum_reservations l = System.sum_reservations (l.eraseIdx idx.val) + (l.get idx).reservation by
+    exists thread_idx
+    rw [<- list_index_of_correct s.threads t_def]
+    exact ⟨rfl, this s.threads thread_idx⟩
+
+  clear thread_idx t_def s t
   
   intro l
   induction l
@@ -166,7 +171,17 @@ theorem iterate_threads (s : System spec) (thread_idx : s.ThreadIndex) :
   rw [iterate]
   simp only []
   cases h : Thread.iterate (List.get s.threads thread_idx) s.state <;> rfl
-      
+
+theorem iterate_panics (s : System spec) (thread_idx : s.ThreadIndex) :
+  (s.iterate thread_idx).panics =
+    match (s.threads.get thread_idx).iterate s.state with
+      | Thread.IterationResult.Done .. => s.panics
+      | Thread.IterationResult.Panic .. => s.panics + 1
+      | Thread.IterationResult.Running .. => s.panics :=by
+  rw [iterate]
+  simp only []
+  cases h : Thread.iterate (List.get s.threads thread_idx) s.state <;> rfl
+
 def reduces_single (a b : System spec) : Prop :=
   ∃ idx : a.ThreadIndex, a.iterate idx = b
 
@@ -243,25 +258,25 @@ theorem fundamental_validation_theorem (s : System spec)
   induction h
   . clear s s' ; rename_i s s' s_single_reduces_to_s'
     constructor
-    . intro t' t'_def
-      
+    . -- show that threads are still valid after iteration
+      intro t' t'_def
       apply Exists.elim <| single_reduce_get s_single_reduces_to_s' t' t'_def
       intro t h
       apply Exists.elim h ; clear h ; intro state h
       apply Or.elim h.right <;> (intro h')
       . rw [<- h'] ; exact threads_valid t h.left
       . have :=threads_valid t h.left
-        let j : s.ThreadIndex :=s.threads.index_of h.left
+        apply (decompose_reservation s h.left).elim
+        intro j ⟨j_def, decompose⟩
         have :=(Thread.valid.def t).mp this s.state (s.other_reservations j)
         rw [h'] at this
-        have h' : List.get s.threads j = t :=by conv => zeta ; exact list_index_of_correct ..
-        have decompose :=decompose_reservation s j
-        rw [h'] at decompose
         rw [<- decompose] at this
         exact (this initial_valid).right
     constructor
-    . sorry
-    . sorry
+    . -- show s'.panic = 0, i.e. iterations do not panic
+      sorry
+    . -- show that state/reservations are still valid after the iteration
+      sorry
   . rename_i IHab IHbc
     have :=IHab no_panics_yet initial_valid threads_valid
     exact IHbc this.right.left this.right.right this.left
