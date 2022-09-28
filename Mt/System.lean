@@ -2,8 +2,9 @@ import Mt.Task
 
 -- utils
 theorem list_get_in {T : Type u} (l : List T) (idx : Fin l.length)
-  : (l.get idx) ∈ l :=by
-  sorry
+  : (l.get idx) ∈ l :=match l, idx with
+  | a::_, ⟨0, _⟩ => List.Mem.head a _
+  | _::as, ⟨n + 1, isLt⟩ => List.Mem.tail _ <| list_get_in as ⟨n, Nat.le_of_succ_le_succ isLt⟩
 
 theorem list_get_of_set {T : Type u} (l : List T) (idx : Nat) (a : T)
   (isLt : idx < (l.set idx a).length) : (l.set idx a).get ⟨idx, isLt⟩ = a :=by
