@@ -99,24 +99,28 @@ protected def sum_reservations : List (Thread spec) -> spec.Reservation
   | [] => IsReservation.empty
   | thread :: threads => thread.reservation + System.sum_reservations threads
 
+protected theorem sum_reservations.erase (l : List (Thread spec)) (idx : Fin l.length)
+  : System.sum_reservations l =
+      System.sum_reservations (l.eraseIdx idx.val) + (l.get idx).reservation :=by
+  sorry
+
 def reservations (s : System spec) : spec.Reservation :=
   System.sum_reservations s.threads
 
 def other_reservations (s : System spec) (thread_idx : s.ThreadIndex) : spec.Reservation :=
   System.sum_reservations <| s.threads.eraseIdx thread_idx.val
 
-theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s.threads) :
-  ∃ idx : s.ThreadIndex, s.threads.get idx = t ∧
-  s.reservations = (s.other_reservations idx) + t.reservation :=by
-  let thread_idx : s.ThreadIndex :=s.threads.index_of t_def
+theorem decompose_reservation' (s : System spec) (thread_idx : s.ThreadIndex) t :
+  t = s.threads.get thread_idx →
+  s.reservations = (s.other_reservations thread_idx) + t.reservation :=by
   suffices
     ∀ (l : List <| Thread spec) (idx : Fin l.length),
     System.sum_reservations l = System.sum_reservations (l.eraseIdx idx.val) + (l.get idx).reservation by
-    exists thread_idx
-    rw [<- list_index_of_correct s.threads t_def]
-    exact ⟨rfl, this s.threads thread_idx⟩
+    intro t_def
+    rw [t_def]
+    exact this s.threads thread_idx
 
-  clear thread_idx t_def s t
+  clear thread_idx s t
   
   intro l
   induction l
@@ -139,6 +143,14 @@ theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s.threads) 
       rw [IsReservation.toIsAssociative.assoc]
       apply congrArg (thread.reservation + .)
       exact IH <| Fin.mk n (Nat.le_of_succ_le_succ idx_ok)
+
+theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s.threads) :
+  ∃ idx : s.ThreadIndex, s.threads.get idx = t ∧
+  s.reservations = (s.other_reservations idx) + t.reservation :=by
+  let thread_idx : s.ThreadIndex :=s.threads.index_of t_def
+  exists thread_idx
+  have :=list_index_of_correct s.threads t_def
+  exact ⟨this, s.decompose_reservation' thread_idx t this.symm⟩
 
 def iterate (s : System spec) : s.ThreadIndex -> System spec
   | thread_idx =>
@@ -289,7 +301,30 @@ theorem fundamental_validation_theorem (s : System spec)
       simp only [h, <- decompose] at this
       exact (this initial_valid).elim
     . -- show that state/reservations are still valid after the iteration
-      sorry
+      apply Exists.elim s_single_reduces_to_s'
+      intro i iteration ; rw [<- iteration]
+      simp only [iterate]
+      generalize t_def : List.get s.threads i = t
+      have t_is_sthread :=list_get_in s.threads i ; rw [t_def] at t_is_sthread
+      have t_valid :=threads_valid t t_is_sthread
+      have decompose :=s.decompose_reservation' i t t_def.symm
+      cases h : Thread.iterate t s.state <;> (simp only [reservations])
+      . rename_i r state
+        rw [<- other_reservations]
+        apply spec.reservations_can_be_dropped _ r
+
+        have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations i)
+        simp only [h, <- decompose] at this
+        exact this initial_valid
+      . rename_i r state
+        rw [<- other_reservations]
+        apply spec.reservations_can_be_dropped _ r
+
+        have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations i)
+        simp only [h, <- decompose] at this
+        exact (this initial_valid).elim
+      . rename_i state cont
+        sorry
   . rename_i IHab IHbc
     have :=IHab no_panics_yet initial_valid threads_valid
     exact IHbc this.right.left this.right.right this.left
