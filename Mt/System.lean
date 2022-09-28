@@ -1,5 +1,24 @@
 import Mt.Task
 
+-- utils
+theorem list_get_in {T : Type u} (l : List T) (idx : Fin l.length)
+  : (l.get idx) ∈ l :=by
+  sorry
+
+theorem list_erase_subset {T : Type u} {a : T} (l : List T) (idx : Nat) 
+  : a ∈ (l.eraseIdx idx) → a ∈ l :=by
+  sorry
+
+theorem list_set_subset {T : Type u} {a : T} (l : List T) (idx : Nat) (new_value : T)
+  : a ∈ (l.set idx new_value) → a = new_value ∨ a ∈ l :=by
+  sorry
+
+def List.index_of {T : Type u} {t : T} (l : List T) (h : t ∈ l) : Fin l.length :=sorry
+
+theorem list_index_of_correct {T : Type u} {t : T} (l : List T) (h : t ∈ l) :
+  l.get (l.index_of h) = t :=by
+  sorry
+
 namespace Mt
 
 structure Thread (spec : Spec) where
@@ -137,6 +156,16 @@ def iterate (s : System spec) : s.ThreadIndex -> System spec
           threads := s.threads.set thread_idx.val thread
           panics := s.panics
         }
+
+theorem iterate_threads (s : System spec) (thread_idx : s.ThreadIndex) :
+  (s.iterate thread_idx).threads =
+    match (s.threads.get thread_idx).iterate s.state with
+      | Thread.IterationResult.Done .. => s.threads.eraseIdx thread_idx.val
+      | Thread.IterationResult.Panic .. => s.threads.eraseIdx thread_idx.val
+      | Thread.IterationResult.Running _ thread => s.threads.set thread_idx.val thread :=by
+  rw [iterate]
+  simp only []
+  cases h : Thread.iterate (List.get s.threads thread_idx) s.state <;> rfl
       
 def reduces_single (a b : System spec) : Prop :=
   ∃ idx : a.ThreadIndex, a.iterate idx = b
@@ -154,37 +183,34 @@ theorem reduces_to_or_eq.trans {a b c : System spec} :
   . rw [h₂.symm] ; exact Or.inr h₁
   . exact Or.inr <| TC.trans a b c h₁ h₂
 
--- TODO: Is there a simpler way to prove this?
 theorem single_reduce_get {s s' : System spec} (r : s.reduces_single s') :
-  ∀ i : s'.ThreadIndex, ∃ (j : s.ThreadIndex) (state : spec.State),
-  s.threads.get j = s'.threads.get i ∨
-  (s.threads.get j).iterate s.state = Thread.IterationResult.Running state (s'.threads.get i) :=by
-  intro i
+  ∀ t', t' ∈ s'.threads → ∃ (t : _) (state : spec.State), t ∈ s.threads ∧ (
+  t = t' ∨
+  t.iterate s.state = Thread.IterationResult.Running state t') :=by
+  intro t' t'_def
+  
   apply Exists.elim r ; intro thread_idx h
-  simp only [iterate] at h
+  have :=iterate_threads s thread_idx
+  rw [h] at this ; clear h
   cases h' : Thread.iterate (List.get s.threads thread_idx) s.state
-  all_goals (
-    simp only [h'] at h ; clear h'
-    have :=Eq.symm <| congrArg (λ (s : System spec) => s.threads) h
-    simp only [] at this
-    clear h
-  )
-  . have :=list_helper s.threads s'.threads thread_idx.val this i
-    apply this.elim ; intro j h ; exists j
-    exists s.state
-    exact Or.inl h.symm
-  . have :=list_helper s.threads s'.threads thread_idx.val this i
-    apply this.elim ; intro j h ; exists j
-    exists s.state
-    exact Or.inl h.symm
-  . cases Decidable.em (thread_idx.val = i.val) <;> rename_i h
-    . rw [h] at this
-      
-      sorry
-    . sorry
-where
-  list_helper {T : Type 1} (l l' : List T) (e : Nat) (h : l' = l.eraseIdx e) :
-    ∀ i : Fin l'.length, ∃ j : Fin l.length, l'.get i = l.get j :=sorry
+  all_goals (rw [h'] at this ; simp only [] at this)
+  . have :=list_erase_subset s.threads thread_idx.val (this.subst t'_def)
+    exists t' ; exists s.state
+    exact ⟨this, Or.inl rfl⟩
+  . have :=list_erase_subset s.threads thread_idx.val (this.subst t'_def)
+    exists t' ; exists s.state
+    exact ⟨this, Or.inl rfl⟩
+  . rename_i state cont
+    cases list_set_subset s.threads thread_idx.val cont (this.subst t'_def) <;> rename_i h
+    . rw [h]
+      exists List.get s.threads thread_idx
+      exists state
+      rw [<- h']
+      constructor
+      . exact list_get_in ..
+      . exact Or.inr rfl
+    . exists t' ; exists state
+      exact ⟨h, Or.inl rfl⟩
 
 /-- Central validation predicate for reasoning about systems.
 
@@ -202,7 +228,7 @@ def valid (s : System spec) : Prop :=
 theorem fundamental_validation_theorem (s : System spec)
   (no_panics_yet : s.panics = 0)
   (initial_valid : spec.validate s.reservations s.state)
-  (threads_valid : ∀ idx : s.ThreadIndex, (s.threads.get idx).valid)
+  (threads_valid : ∀ t, t ∈ s.threads → t.valid)
   : s.valid :=by
   intro s' s_reduces_or_eq_to_s'
   cases s_reduces_or_eq_to_s' <;> rename_i h
@@ -210,24 +236,28 @@ theorem fundamental_validation_theorem (s : System spec)
     exact ⟨no_panics_yet, initial_valid⟩
   
   suffices
-    (∀ idx : s'.ThreadIndex, (s'.threads.get idx).valid) ∧
+    (∀ t', t' ∈ s'.threads → t'.valid) ∧
     s'.panics = 0 ∧ Spec.validate spec (reservations s') s'.state
      from this.right
 
   induction h
   . clear s s' ; rename_i s s' s_single_reduces_to_s'
     constructor
-    . intro i
-      apply Exists.elim <| single_reduce_get s_single_reduces_to_s' i
-      intro j h
+    . intro t' t'_def
+      
+      apply Exists.elim <| single_reduce_get s_single_reduces_to_s' t' t'_def
+      intro t h
       apply Exists.elim h ; clear h ; intro state h
-      apply Or.elim h <;> (clear h ; intro h)
-      . rw [<- h] ; exact threads_valid j
-      . have :=threads_valid j
-        have :=(Thread.valid.def (List.get s.threads j)).mp this s.state (s.other_reservations j)
-        rw [h] at this
-        simp only [] at this
-        rw [<- decompose_reservation s j] at this
+      apply Or.elim h.right <;> (intro h')
+      . rw [<- h'] ; exact threads_valid t h.left
+      . have :=threads_valid t h.left
+        let j : s.ThreadIndex :=s.threads.index_of h.left
+        have :=(Thread.valid.def t).mp this s.state (s.other_reservations j)
+        rw [h'] at this
+        have h' : List.get s.threads j = t :=by conv => zeta ; exact list_index_of_correct ..
+        have decompose :=decompose_reservation s j
+        rw [h'] at decompose
+        rw [<- decompose] at this
         exact (this initial_valid).right
     constructor
     . sorry
