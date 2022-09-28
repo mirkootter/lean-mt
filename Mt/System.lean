@@ -274,7 +274,20 @@ theorem fundamental_validation_theorem (s : System spec)
         exact (this initial_valid).right
     constructor
     . -- show s'.panic = 0, i.e. iterations do not panic
-      sorry
+      apply Exists.elim s_single_reduces_to_s'
+      intro i iteration ; rw [<- iteration]
+      simp only [iterate]
+      generalize t_def : List.get s.threads i = t
+      cases h : Thread.iterate t s.state <;> (simp only [] ; try assumption)
+      have :=list_get_in s.threads i ; rw [t_def] at this
+      have t_valid :=threads_valid t this
+
+      apply (decompose_reservation s this).elim
+      intro j ⟨j_def, decompose⟩
+
+      have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations j)
+      simp only [h, <- decompose] at this
+      exact (this initial_valid).elim
     . -- show that state/reservations are still valid after the iteration
       sorry
   . rename_i IHab IHbc
