@@ -135,6 +135,34 @@ theorem iterate_bind {U V : Type}
     simp only [Bind.bind, bind, iterate, impl.step_to_iteration_result]
     cases mu reservation0 s0 <;> rfl
 
+-- TODO
+inductive may_complete_with {T : Type} :
+  TaskM spec T → spec.Reservation → spec.Reservation →  T → Prop where
+| done
+    (p : TaskM spec T)
+    (state0 state' : spec.State) (env_r r0 r' : spec.Reservation)
+    (t : T)
+    (initial_valid : spec.validate (env_r + r0) state)
+    (iteration : p.iterate r0 state0 = IterationResult.Done r' state' t)
+    : may_complete_with p r0 r' t
+| continuation
+    (p cont  : TaskM spec T)
+    (state0 state' : spec.State) (env_r r0 r' r'' : spec.Reservation)
+    (t : T)
+    (initial_valid : spec.validate (env_r + r0) state)
+    (iteration : p.iterate r0 state0 = IterationResult.Continuation r' state' cont)
+    (cont_completes_with : cont.may_complete_with r' r'' t)
+    : may_complete_with p r0 r'' t
+
+theorem may_complete_with.elim_pure {T : Type} {r r' : spec.Reservation} {t t' : T}
+  (h : (Pure.pure (f :=TaskM spec) t).may_complete_with r r' t') : t = t' :=by
+  cases h
+  . rename_i iteration ; injection iteration ; assumption
+  . contradiction
+
+-- TODO
+-- theorem may_complete_with.elim_bind 
+
 /-- A thread is called valid for a given reservation if and only if it does not panic and
   respects the invariant `spec.validate` in this and all following iterations.
   
@@ -172,6 +200,23 @@ theorem valid_for_reservation.def {T : Type} (task : TaskM spec T) (reservation 
   apply forall_ext
   intro state
   cases task reservation state <;> simp only [Mt.impl.Step.valid]
+
+theorem valid_for_reservation_pure {T : Type} (t : T) (r : spec.Reservation)
+  : (Pure.pure (f :=TaskM spec) t).valid_for_reservation r :=by
+  rw [valid_for_reservation.def]
+  simp only [iterate_pure]
+  intros ; assumption
+
+-- TODO
+theorem valid_for_reservation_bind {U V : Type} (mu : TaskM spec U) (f : U -> TaskM spec V) (r : spec.Reservation)
+  (mu_valid : mu.valid_for_reservation r)
+  (f_valid : ∀ (s : spec.State) (env_r r' : spec.Reservation) (u : U),
+    mu.may_complete_with r r' u →
+    spec.validate (env_r + r') s →
+    (f u).valid_for_reservation r'
+  )
+  : (mu >>= f).valid_for_reservation r :=by
+  sorry
 
 end TaskM
 
