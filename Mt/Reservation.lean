@@ -1,3 +1,49 @@
+-- utils
+theorem nat_max_of_le {a b : Nat} : a ≤ b → a.max b = b :=by
+  intro h ; simp only [Nat.max, h, ite_true]
+
+theorem nat_max_of_eq' {a b : Nat} : a = b → a.max b = b :=
+  λ h => nat_max_of_le (by rw [h] ; constructor)
+
+theorem nat_max_of_eq {a b : Nat} : a = b → a.max b = a :=by
+  intro h ; rw [nat_max_of_eq' h] ; exact h.symm
+
+theorem nat_max_of_gt {a b : Nat} : a > b → a.max b = a :=by
+  intro h ; simp only [Nat.max, Nat.not_le_of_gt h, ite_false]
+
+theorem nat_max_of_ge {a b : Nat} : a ≥ b → a.max b = a :=by
+  intro h
+  cases Nat.eq_or_lt_of_le h <;> rename_i h
+  . exact nat_max_of_eq h.symm
+  . exact nat_max_of_gt h
+
+theorem nat_max_of_lt {a b : Nat} : a < b → a.max b = b :=nat_max_of_le ∘ Nat.le_of_lt
+
+theorem nat_max_comm  : ∀ a b : Nat, a.max b = b.max a :=by
+  intro a b
+  cases Nat.lt_or_ge a b <;> rename_i h
+  . rw [nat_max_of_lt h, nat_max_of_gt h]
+  cases Nat.eq_or_lt_of_le h <;> (clear h ; rename_i h)
+  . rw [nat_max_of_eq h, nat_max_of_eq' h.symm]
+  . rw [nat_max_of_lt h, nat_max_of_gt h]
+
+theorem nat_max_assoc : ∀ a b c : Nat, (a.max b).max c = a.max (b.max c) :=by
+  intros a b c
+  cases Nat.lt_or_ge a b
+  <;> cases Nat.lt_or_ge b c
+  <;> rename_i ab bc
+  . rw [nat_max_of_lt ab, nat_max_of_lt bc, nat_max_of_lt (trans ab bc)]
+  . rw [nat_max_of_lt ab, nat_max_of_ge bc, nat_max_of_lt ab]
+  . rw [nat_max_of_ge ab, nat_max_of_lt bc]
+  . rw [nat_max_of_ge ab, nat_max_of_ge bc, nat_max_of_ge ab]
+    exact nat_max_of_ge (trans bc ab : c ≤ a)
+
+theorem nat_zero_max  : ∀ a : Nat, ((0 : Nat).max a) = a :=by
+  intro a
+  simp only [Nat.max, Nat.zero_le, ite_true]
+
+namespace Mt
+
 /-- Class to represent 'reservations'
 
   Reservations are the main method for reasoning about inter-thread behaviour.
@@ -69,3 +115,24 @@ structure Spec where
   validate : Reservation -> State -> Prop
   reservations_can_be_dropped : -- if a thread drops its reservation, it should not break the system
     ∀ (r r' : Reservation) (state : State), validate (r + r') state → validate r state
+
+end Mt
+
+namespace Mt
+  instance : IsReservation Nat where
+    assoc     := Nat.add_assoc
+    comm      := Nat.add_comm
+    empty     := 0
+    empty_add := Nat.zero_add
+
+  def LowerBound :=Nat
+
+  instance : Add LowerBound :=⟨Nat.max⟩
+
+  instance : IsReservation LowerBound where
+    assoc :=nat_max_assoc
+    comm :=nat_max_comm
+    empty :=(0 : Nat)
+    empty_add :=nat_zero_max
+
+end Mt
