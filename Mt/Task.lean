@@ -135,6 +135,58 @@ theorem iterate_bind {U V : Type}
     simp only [Bind.bind, bind, iterate, impl.step_to_iteration_result]
     cases mu reservation0 s0 <;> rfl
 
+inductive is_direct_cont {T : Type} : TaskM spec T -> TaskM spec T -> Prop where
+  | continuation {cont p : TaskM spec T} {r r' : spec.Reservation} {s s' : spec.State}
+    (iteration : p.iterate r s = IterationResult.Continuation r' s' cont)
+    : is_direct_cont cont p
+
+theorem is_direct_cont.wf {T : Type} : WellFounded (@is_direct_cont spec T) :=by
+  constructor
+  intro p
+  constructor
+  intro cont
+  intro is_cont ; cases is_cont
+  rename_i r r' s s' iteration
+  apply helper (impl.Step.Continuation r s cont) cont
+  exists r, s
+
+where
+  helper (ir : impl.Step spec T) (p : TaskM spec T) :
+    (∃ r s, ir = impl.Step.Continuation r s p) → Acc is_direct_cont p :=by
+  revert p
+  induction ir
+  . intro p h
+    apply h.elim ; intro _ h
+    apply h.elim ; intro _ _
+    contradiction
+  . intro p h
+    apply h.elim ; intro _ h
+    apply h.elim ; intro _ _
+    contradiction
+  . rename_i r s p' IH
+    intro p h
+    cases h ; rename_i r' h
+    cases h ; rename_i s' h
+    injection h
+    rename_i r_def s_def p'_def
+    rw [<- p'_def]
+    clear p p'_def r_def s_def r' s' r s
+    constructor
+    intro cont is_cont
+    cases is_cont
+    rename_i r r' s s' iteration
+    apply IH r s cont
+    exists r', s'
+    simp only [iterate, Mt.impl.step_to_iteration_result] at iteration
+    cases h : p' r s <;> simp only [h] at iteration
+    injection iteration
+    rename_i r'_def s''_def cont_def
+    rw [r'_def, s''_def, cont_def]
+
+instance TaskM.wf {T : Type} : WellFoundedRelation (TaskM spec T) where
+  rel :=is_direct_cont
+  wf  :=is_direct_cont.wf
+
 /-- A thread is called valid for a given reservation if and only if it does not panic and
   respects the invariant `spec.validate` in this and all following iterations.
   
@@ -233,10 +285,11 @@ theorem valid_for_reservation_bind {U V : Type}
   . rename_i r' state' cont
     constructor
     . exact this.left
-    . exact valid_for_reservation_bind cont f r' final_check_u final_check_v this.right f_valid
+    . have _ : is_direct_cont cont mu :=⟨h⟩ -- used for termination
+      exact valid_for_reservation_bind cont f r' final_check_u final_check_v this.right f_valid
 
-termination_by valid_for_reservation_bind => 12 -- TODO
-decreasing_by simp_wf ; sorry -- TODO
+termination_by
+  valid_for_reservation_bind => mu
 
 end TaskM
 
