@@ -68,7 +68,7 @@ def mk_thread {T : Type} (task : TaskM spec T) : Thread spec := {
 namespace Thread
 
 def valid (thread : Thread spec) : Prop :=
-  thread.task.valid_for_reservation thread.reservation
+  thread.task.valid_for_reservation' thread.reservation
 
 inductive IterationResult (spec : Spec) where
   | Done : spec.Reservation -> spec.State -> IterationResult spec
@@ -103,7 +103,7 @@ theorem valid.def (thread : Thread spec) :
       | IterationResult.Running state' cont =>
         (spec.validate (env_r + cont.reservation) state') ∧ cont.valid :=by
   simp only [valid, iterate]
-  rw [TaskM.valid_for_reservation.def]
+  rw [TaskM.valid_for_reservation'.def]
   apply forall_ext ; intro state
   apply forall_ext ; intro env_r
   cases TaskM.iterate thread.task thread.reservation state <;> simp only []
