@@ -129,7 +129,7 @@ namespace Mt
 
   instance : Add LowerBound :=⟨Nat.max⟩
 
-  instance : IsReservation LowerBound where
+  instance LowerBound.instance : IsReservation LowerBound where
     assoc :=nat_max_assoc
     comm :=nat_max_comm
     empty :=(0 : Nat)

@@ -58,6 +58,24 @@ def bind {U V : Type} (mu : TaskM spec U) (f : U -> TaskM spec V) : TaskM spec V
 def panic {T : Type} (msg : String) : TaskM spec T :=
   fun reservation state => Step.Panic reservation state msg
 
+def atomic_read_modify_read {T : Type}
+  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
+  : TaskM spec T :=fun r s =>
+    match f r s with
+    | ⟨t, r', s'⟩ => Step.Done r' s' t
+
+def atomic_read_modify
+  (f : spec.Reservation -> spec.State -> spec.Reservation × spec.State)
+  : TaskM spec Unit :=fun r s =>
+    match f r s with
+    | ⟨r', s'⟩ => Step.Done r' s' ⟨⟩
+
+def atomic_read {T : Type}
+  (f : spec.Reservation -> spec.State -> T × spec.Reservation)
+  : TaskM spec T :=fun r s =>
+    match f r s with
+    | ⟨t, r'⟩ => Step.Done r' s t
+
 def bind_assoc {U V W : Type}
   (mu : TaskM spec U)
   (f : U -> TaskM spec V)
@@ -290,6 +308,45 @@ theorem valid_for_reservation_bind {U V : Type}
 
 termination_by
   valid_for_reservation_bind => mu
+
+theorem valid_for_reservation_rmr {T : Type}
+  {f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State}
+  (r : spec.Reservation)
+  (final_check : spec.Reservation -> T -> Prop)
+  (f_valid : ∀ (s : spec.State) (env_r : spec.Reservation),
+    spec.validate (env_r + r) s →
+    match f r s with
+    | ⟨t, r', s'⟩ => spec.validate (env_r + r') s' ∧ final_check r' t
+  )
+  : (atomic_read_modify_read f).valid_for_reservation r final_check :=by
+  intro s env_r initial_valid
+  exact f_valid s env_r initial_valid
+
+theorem valid_for_reservation_rm
+  {f : spec.Reservation -> spec.State -> spec.Reservation × spec.State}
+  (r : spec.Reservation)
+  (final_check : spec.Reservation -> Unit -> Prop)
+  (f_valid : ∀ (s : spec.State) (env_r : spec.Reservation),
+    spec.validate (env_r + r) s →
+    match f r s with
+    | ⟨r', s'⟩ => spec.validate (env_r + r') s' ∧ final_check r' ⟨⟩
+  )
+  : (atomic_read_modify f).valid_for_reservation r final_check :=by
+  intro s env_r initial_valid
+  exact f_valid s env_r initial_valid
+
+theorem valid_for_reservation_read {T : Type}
+  {f : spec.Reservation -> spec.State -> T × spec.Reservation}
+  (r : spec.Reservation)
+  (final_check : spec.Reservation -> T -> Prop)
+  (f_valid : ∀ (s : spec.State) (env_r : spec.Reservation),
+    spec.validate (env_r + r) s →
+    match f r s with
+    | ⟨t, r'⟩ => spec.validate (env_r + r') s ∧ final_check r' t
+  )
+  : (atomic_read f).valid_for_reservation r final_check :=by
+  intro s env_r initial_valid
+  exact f_valid s env_r initial_valid
 
 end TaskM
 
