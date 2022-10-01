@@ -7,8 +7,8 @@ structure State where
   y : Nat
 
 structure Reservation where
-  luft  : Nat
-  min_x : Mt.LowerBound
+  luft  : Nat               -- invariant : `x ≥ y + luft`
+  min_x : Mt.LowerBound     -- invariant : `x ≥ min_x`
 
 -- [begin] this block will be provided by a `derive` handler in the future --
 -----------------------------------------------------------------------------
