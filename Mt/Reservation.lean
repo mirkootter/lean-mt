@@ -42,6 +42,22 @@ theorem nat_zero_max  : ∀ a : Nat, ((0 : Nat).max a) = a :=by
   intro a
   simp only [Nat.max, Nat.zero_le, ite_true]
 
+theorem nat_max_zero  : ∀ a : Nat, (a.max 0) = a :=fun a => calc
+  (a.max 0) = Nat.max 0 a :=nat_max_comm ..
+          _ = a           :=nat_zero_max a
+
+theorem nat_max_le {a b c : Nat} : a.max b ≤ c ↔ a ≤ c ∧ b ≤ c :=by
+  constructor <;> intro h
+  <;> (cases Nat.lt_or_ge a b) <;> rename_i ab
+  . rw [nat_max_of_lt ab] at h
+    exact ⟨Nat.le_of_lt (trans ab h), h⟩
+  . rw [nat_max_of_ge ab] at h
+    exact ⟨h, trans ab h⟩
+  . rw [nat_max_of_lt ab]
+    exact h.right
+  . rw [nat_max_of_ge ab]
+    exact h.left
+
 namespace Mt
 
 /-- Class to represent 'reservations'
