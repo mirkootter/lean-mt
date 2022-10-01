@@ -49,7 +49,7 @@ This idea is formalized. We develop a very general type of invariant and provide
 
 ## Reservations
 
-Reservations are our way to reasoning about the thread's past
+Reservations are our way to reason about the thread's past
 actions without needing to manage its full history. Often, we find
 situations that a given thread may perform a certain action
 only if he has performed a different action first.
@@ -57,24 +57,24 @@ only if he has performed a different action first.
 Consider the line `++y` in `thread1`. This line is only sound
 because the thread has called `++x` before.
 
-This poses an additional challenge to writing thread specifications.
+This poses an additional challenge for writing thread specifications.
 Without the line `++y`, we could simply demand that `x ≥ y` holds
 at all time and use a simple inductive argument (induction over time).
-However, the knowledge that a previous thread only ensures `x ≥ y`
+However, the knowledge that a previous thread only ensured `x ≥ y`
 is not enough to reason that `++y` is an allowed operation. We need
 the stronger guarantee `x ≥ y + 1` for that.
 
-Our solutions to this problems are *reservations*. Reservations
+Our solution to this problems are *reservations*. Reservations
 are a certain kind of thread local variables. Since they are
 thread local, they cannot be modifed by other threads. However,
 the specification may demand certain properties of the
-reservations.
+reservations which we can use as foundation for reasoning.
 
 Going back to our example, we follow the intuitive approach
 that `++x` creates some "luft" between `x` and `y` to prepare
 `++y`. This luft is stored as reservation. The next time this
-iterations becomes active, the reservation will still be valid
-and we still know `y ≥ x + 1`.
+thread becomes active, the reservation will still be valid
+and we conclude `y ≥ x + 1`.
 
 Have a look at our revised example, which is much easier to
 reason about:
