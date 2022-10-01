@@ -279,8 +279,7 @@ theorem valid_for_reservation_bind {U V : Type}
   (final_check_u : spec.Reservation -> U -> Prop)
   (final_check_v : spec.Reservation -> V -> Prop)
   (mu_valid : mu.valid_for_reservation r final_check_u)
-  (f_valid : ∀ (s : spec.State) (env_r r' : spec.Reservation) (u : U),
-    spec.validate (env_r + r') s →
+  (f_valid : ∀ (r' : spec.Reservation) (u : U),
     final_check_u r' u →
     (f u).valid_for_reservation r' final_check_v
   )
@@ -297,9 +296,7 @@ theorem valid_for_reservation_bind {U V : Type}
   . rename_i r' state' u
     constructor
     . exact this.left
-    . apply f_valid state' env_r
-      . exact this.left
-      . exact this.right
+    . exact f_valid r' u this.right
   . rename_i r' state' cont
     constructor
     . exact this.left
