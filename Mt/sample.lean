@@ -61,10 +61,10 @@ def thread1 : TaskM spec Unit :=do
     { r with luft := 0 },
     { s with y := s.y + 1 }⟩
 
-  let _ <- atomic_read λ _ ⟨_, y⟩ => ⟨y, Reservation.mk 0 y⟩
-  let _ <- atomic_read λ _ ⟨x, _⟩ => ⟨x, ReservationInstance.empty⟩
+  let py <- atomic_read λ _ ⟨_, y⟩ => ⟨y, Reservation.mk 0 y⟩
+  let px <- atomic_read λ _ ⟨x, _⟩ => ⟨x, ReservationInstance.empty⟩
 
-  -- TODO: assert (px ≥ py)
+  atomic_assert fun _ => px ≥ py
 
 theorem thread1_valid : thread1.valid_for_reservation' ReservationInstance.empty :=by
   rw [valid_for_reservation']
@@ -161,6 +161,8 @@ theorem thread1_valid : thread1.valid_for_reservation' ReservationInstance.empty
   clear luft min_x min_x_def
   intro ⟨luft, min_x⟩ (px : Nat) px_gt_py
 
-  have : px ≥ py :=px_gt_py -- for the assertion
-
-  exact valid_for_reservation_pure (spec :=spec) _ _ (λ _ _ => True) ⟨⟩
+  apply valid_for_reservation_assert (spec :=spec)
+  . -- validate `assert px ≥ py`
+    ----------------------------
+    intros
+    simp only [px_gt_py]

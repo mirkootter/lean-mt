@@ -76,6 +76,13 @@ def atomic_read {T : Type}
     match f r s with
     | ⟨t, r'⟩ => Step.Done r' s t
 
+def atomic_assert
+  (cond : spec.State -> Bool)
+  : TaskM spec Unit :=fun r s =>
+    match cond s with
+    | true => Step.Done r s ⟨⟩
+    | false => Step.Panic r s "Assertion failed"
+
 def bind_assoc {U V W : Type}
   (mu : TaskM spec U)
   (f : U -> TaskM spec V)
@@ -344,6 +351,18 @@ theorem valid_for_reservation_read {T : Type}
   : (atomic_read f).valid_for_reservation r final_check :=by
   intro s env_r initial_valid
   exact f_valid s env_r initial_valid
+
+theorem valid_for_reservation_assert
+  {cond : spec.State -> Bool}
+  (r : spec.Reservation)
+  (assertion_succeeds : ∀ (s : spec.State) (env_r : spec.Reservation),
+    spec.validate (env_r + r) s → cond s
+  )
+  : (atomic_assert cond).valid_for_reservation r λ _ _ => True :=by
+  intro s env_r initial_valid
+  have cond_true :=assertion_succeeds s env_r initial_valid
+  simp only [cond_true, atomic_assert, Mt.impl.Step.valid, and_true]
+  exact initial_valid
 
 end TaskM
 
