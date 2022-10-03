@@ -15,15 +15,18 @@ namespace impl
 private inductive Step (spec : Spec) (T : Type) where
   | Done : spec.Reservation -> spec.State -> T -> Step spec T
   | Panic : spec.Reservation -> spec.State -> String -> Step spec T
-  | Continuation : spec.Reservation -> spec.State -> (spec.Reservation -> spec.State -> Step spec T)
+  | Continuation : spec.Reservation -> spec.State ->
+    (spec.Reservation -> Bool) ->
+    (spec.Reservation -> spec.State -> Step spec T)
     -> Step spec T
 
 private def Step.chain {spec : Spec} {U V : Type} :
   Step spec U -> (U -> spec.Reservation -> spec.State -> Step spec V) -> Step spec V
-  | Done reservation state u, f => Continuation reservation state (f u)
+  | Done reservation state u, f => Continuation reservation state (λ _ => true) (f u)
   | Panic reservation state msg, _ => Panic reservation state msg
-  | Continuation reservation state cont, f =>
-    Continuation reservation state (fun reservation s => chain (cont reservation s) f)
+  | Continuation reservation state wait_for cont, f =>
+    Continuation reservation state wait_for (fun reservation s =>
+      chain (cont reservation s) f)
 
 variable {spec : Spec}
 local instance : IsReservation spec.Reservation :=spec.is_reservation
@@ -32,9 +35,10 @@ private def Step.valid {T : Type} : Step spec T -> spec.Reservation -> (spec.Res
   | Done reservation state t, env_reservation, final_check =>
     spec.validate (env_reservation + reservation) state ∧ final_check reservation t
   | Panic .., _, _ => False
-  | Continuation reservation state cont, env_reservation, final_check =>
+  | Continuation reservation state wait_for cont, env_reservation, final_check =>
     (spec.validate (env_reservation + reservation) state) ∧
     ∀ (state' : spec.State) (env_reservation' : spec.Reservation),
+      wait_for (env_reservation' + reservation) →
       (spec.validate
         (env_reservation' + reservation)
         state')
@@ -94,7 +98,7 @@ def bind_assoc {U V W : Type}
   induction mu reservation0 s0 <;> try rfl
   rename_i cont IH 
   simp only [Step.chain]
-  conv => lhs ; arg 3 ; intro reservation s ; rw [IH reservation s]
+  conv => lhs ; arg 4 ; intro reservation s ; rw [IH reservation s]
 
 /-- The result of a single iteration of a `TaskM`. If the task is not completed
   after this iteration, the `IterationResult` contains a continuation
@@ -108,13 +112,14 @@ def bind_assoc {U V W : Type}
 inductive IterationResult (spec : Spec) (T : Type) where
   | Done : spec.Reservation -> spec.State -> T -> IterationResult spec T
   | Panic : spec.Reservation -> spec.State -> String -> IterationResult spec T
-  | Continuation : spec.Reservation -> spec.State -> TaskM spec T -> IterationResult spec T
+  | Continuation : spec.Reservation -> spec.State ->
+      (spec.Reservation -> Bool) -> TaskM spec T -> IterationResult spec T
 
 /-- state after the iteration -/
 def IterationResult.state {T : Type} : IterationResult spec T -> spec.State
   | Done _ state _ => state
   | Panic _ state _ => state
-  | Continuation _ state _ => state
+  | Continuation _ state .. => state
 
 /-- reservation after the iteration -/
 def IterationResult.reservation {T : Type} : IterationResult spec T -> spec.Reservation
@@ -126,7 +131,8 @@ private def _root_.Mt.impl.step_to_iteration_result {T : Type} :
   impl.Step spec T -> IterationResult spec T
     | impl.Step.Done reservation state t => IterationResult.Done reservation state t
     | impl.Step.Panic reservation state msg => IterationResult.Panic reservation state msg
-    | impl.Step.Continuation reservation state cont => IterationResult.Continuation reservation state cont
+    | impl.Step.Continuation reservation state wait_for cont =>
+        IterationResult.Continuation reservation state wait_for cont
 
 instance : Monad (TaskM spec) where
   pure :=pure
@@ -152,17 +158,18 @@ theorem iterate_bind {U V : Type}
   (f : U -> TaskM spec V)
   : ∀ (reservation0 : spec.Reservation) (s0 : spec.State),
     (mu >>= f).iterate reservation0 s0 = match mu.iterate reservation0 s0 with
-    | IterationResult.Done reservation1 s1 u => IterationResult.Continuation reservation1 s1 (f u)
+    | IterationResult.Done reservation1 s1 u => IterationResult.Continuation reservation1 s1 (λ _ => true) (f u)
     | IterationResult.Panic reservation1 s1 msg => IterationResult.Panic reservation1 s1 msg
-    | IterationResult.Continuation reservation1 s1 cont =>
-      IterationResult.Continuation reservation1 s1 (cont.bind f) :=by
+    | IterationResult.Continuation reservation1 s1 wait_for cont =>
+      IterationResult.Continuation reservation1 s1 wait_for (cont.bind f) :=by
     intro reservation0 s0
     simp only [Bind.bind, bind, iterate, impl.step_to_iteration_result]
     cases mu reservation0 s0 <;> rfl
 
 inductive is_direct_cont {T : Type} : TaskM spec T -> TaskM spec T -> Prop where
   | continuation {cont p : TaskM spec T} {r r' : spec.Reservation} {s s' : spec.State}
-    (iteration : p.iterate r s = IterationResult.Continuation r' s' cont)
+    {wait_for : spec.Reservation -> Bool}
+    (iteration : p.iterate r s = IterationResult.Continuation r' s' wait_for cont)
     : is_direct_cont cont p
 
 theorem is_direct_cont.wf {T : Type} : WellFounded (@is_direct_cont spec T) :=by
@@ -171,42 +178,45 @@ theorem is_direct_cont.wf {T : Type} : WellFounded (@is_direct_cont spec T) :=by
   constructor
   intro cont
   intro is_cont ; cases is_cont
-  rename_i r r' s s' iteration
-  apply helper (impl.Step.Continuation r s cont) cont
-  exists r, s
+  rename_i r r' s s' wait_for iteration
+  apply helper (impl.Step.Continuation r s wait_for cont) cont
+  exists r, s, wait_for
 
 where
   helper (ir : impl.Step spec T) (p : TaskM spec T) :
-    (∃ r s, ir = impl.Step.Continuation r s p) → Acc is_direct_cont p :=by
+    (∃ r s w, ir = impl.Step.Continuation r s w p) → Acc is_direct_cont p :=by
   revert p
   induction ir
   . intro p h
     apply h.elim ; intro _ h
+    apply h.elim ; intro _ h
     apply h.elim ; intro _ _
     contradiction
   . intro p h
     apply h.elim ; intro _ h
+    apply h.elim ; intro _ h
     apply h.elim ; intro _ _
     contradiction
-  . rename_i r s p' IH
+  . rename_i r s wait_for p' IH
     intro p h
     cases h ; rename_i r' h
     cases h ; rename_i s' h
+    cases h ; rename_i w' h
     injection h
-    rename_i r_def s_def p'_def
+    rename_i r_def s_def w_def p'_def
     rw [<- p'_def]
-    clear p p'_def r_def s_def r' s' r s
+    clear p p'_def r_def s_def w_def r' s' w' r s
     constructor
     intro cont is_cont
     cases is_cont
-    rename_i r r' s s' iteration
+    rename_i r r' s s' w' iteration
     apply IH r s cont
-    exists r', s'
+    exists r', s', w'
     simp only [iterate, Mt.impl.step_to_iteration_result] at iteration
     cases h : p' r s <;> simp only [h] at iteration
     injection iteration
-    rename_i r'_def s''_def cont_def
-    rw [r'_def, s''_def, cont_def]
+    rename_i r'_def s''_def w'_def cont_def
+    rw [r'_def, s''_def, w'_def, cont_def]
 
 instance TaskM.wf {T : Type} : WellFoundedRelation (TaskM spec T) where
   rel :=is_direct_cont
@@ -230,27 +240,32 @@ instance TaskM.wf {T : Type} : WellFoundedRelation (TaskM spec T) where
     be unfolded. Use the `valid_for_reservation.def` theorem instead.
 -/
 def valid_for_reservation {T : Type} (task : TaskM spec T) (reservation : spec.Reservation)
-  (final_check : spec.Reservation -> T -> Prop) : Prop :=
+  (final_check : spec.Reservation -> T -> Prop)
+  (wait_for : spec.Reservation -> Bool) : Prop :=
   ∀ (state : spec.State) (env_r : spec.Reservation),
+  wait_for (env_r + reservation) →
   spec.validate (env_r + reservation) state →
   impl.Step.valid (task reservation state) env_r final_check
 
 def valid_for_reservation' {T : Type} (task : TaskM spec T) (reservation : spec.Reservation) : Prop :=
-  valid_for_reservation task reservation (λ _ _ => True)
+  valid_for_reservation task reservation (λ _ _ => True) (λ _ => true)
 
 /-- Main theorem to justify the definition of `valid_for_reservation` -/
 theorem valid_for_reservation.def {T : Type} (task : TaskM spec T) (reservation : spec.Reservation)
-  (final_check : spec.Reservation -> T -> Prop) :
-  task.valid_for_reservation reservation final_check =
+  (final_check : spec.Reservation -> T -> Prop)
+  (wait_for : spec.Reservation -> Bool)
+  :
+  task.valid_for_reservation reservation final_check wait_for =
     ∀ (state : spec.State) (env_r : spec.Reservation),
+    wait_for (env_r + reservation) →
     spec.validate (env_r + reservation) state →
     match task.iterate reservation state with
       | IterationResult.Done reservation' state' t =>
         spec.validate (env_r + reservation') state' ∧ final_check reservation' t
       | IterationResult.Panic .. => False
-      | IterationResult.Continuation reservation' state' cont =>
+      | IterationResult.Continuation reservation' state' wait_for' cont =>
         (spec.validate (env_r + reservation') state') ∧
-        cont.valid_for_reservation reservation' final_check :=by
+        cont.valid_for_reservation reservation' final_check wait_for' :=by
   simp only [iterate, Mt.impl.step_to_iteration_result, valid_for_reservation]
   apply forall_ext
   intro state
@@ -264,17 +279,17 @@ theorem valid_for_reservation'.def {T : Type} (task : TaskM spec T) (reservation
       | IterationResult.Done reservation' state' _ =>
         spec.validate (env_r + reservation') state'
       | IterationResult.Panic .. => False
-      | IterationResult.Continuation reservation' state' cont =>
+      | IterationResult.Continuation reservation' state' wait_for' cont =>
         (spec.validate (env_r + reservation') state') ∧
-        cont.valid_for_reservation' reservation' :=by
+        cont.valid_for_reservation reservation' (λ _ _ => True) wait_for' :=by
   rw [valid_for_reservation', valid_for_reservation.def]
-  simp only [and_true, true_and]
-  rfl
+  simp only [and_true, true_and, true_implies]
 
 theorem valid_for_reservation_pure {T : Type} (t : T) (r : spec.Reservation)
   (final_check : spec.Reservation -> T -> Prop)
+  (wait_for : spec.Reservation -> Bool)
   (result_valid : final_check r t)
-  : (Pure.pure (f :=TaskM spec) t).valid_for_reservation r final_check :=by
+  : (Pure.pure (f :=TaskM spec) t).valid_for_reservation r final_check wait_for :=by
   rw [valid_for_reservation.def]
   intros
   constructor <;> assumption
@@ -283,32 +298,33 @@ theorem valid_for_reservation_bind {U V : Type}
   (mu : TaskM spec U)
   (f : U -> TaskM spec V)
   (r : spec.Reservation)
+  (wait_for : spec.Reservation -> Bool)
   (final_check_u : spec.Reservation -> U -> Prop)
   (final_check_v : spec.Reservation -> V -> Prop)
-  (mu_valid : mu.valid_for_reservation r final_check_u)
+  (mu_valid : mu.valid_for_reservation r final_check_u wait_for)
   (f_valid : ∀ (r' : spec.Reservation) (u : U),
     final_check_u r' u →
-    (f u).valid_for_reservation r' final_check_v
+    (f u).valid_for_reservation r' final_check_v (λ _ => true)
   )
-  : (mu >>= f).valid_for_reservation r final_check_v :=by
+  : (mu >>= f).valid_for_reservation r final_check_v wait_for :=by
   rw [valid_for_reservation.def]
-  intro state env_r initial_valid
+  intro state env_r waited_for initial_valid
   simp only [iterate_bind]
   cases h : iterate mu r state
   all_goals (
     simp only []
-    have :=(valid_for_reservation.def mu r final_check_u).mp mu_valid state env_r initial_valid
+    have :=(valid_for_reservation.def mu r final_check_u wait_for).mp mu_valid state env_r waited_for initial_valid
     simp only [h] at this
   )
   . rename_i r' state' u
     constructor
     . exact this.left
     . exact f_valid r' u this.right
-  . rename_i r' state' cont
+  . rename_i r' state' wait_for cont
     constructor
     . exact this.left
     . have _ : is_direct_cont cont mu :=⟨h⟩ -- used for termination
-      exact valid_for_reservation_bind cont f r' final_check_u final_check_v this.right f_valid
+      exact valid_for_reservation_bind cont f r' wait_for final_check_u final_check_v this.right f_valid
 
 termination_by
   valid_for_reservation_bind => mu
@@ -317,50 +333,58 @@ theorem valid_for_reservation_rmr {T : Type}
   {f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State}
   (r : spec.Reservation)
   (final_check : spec.Reservation -> T -> Prop)
+  (wait_for : spec.Reservation -> Bool)
   (f_valid : ∀ (s : spec.State) (env_r : spec.Reservation),
     spec.validate (env_r + r) s →
+    wait_for (env_r + r) →
     match f r s with
     | ⟨t, r', s'⟩ => spec.validate (env_r + r') s' ∧ final_check r' t
   )
-  : (atomic_read_modify_read f).valid_for_reservation r final_check :=by
-  intro s env_r initial_valid
-  exact f_valid s env_r initial_valid
+  : (atomic_read_modify_read f).valid_for_reservation r final_check wait_for :=by
+  intro s env_r waited_for initial_valid
+  exact f_valid s env_r initial_valid waited_for
 
 theorem valid_for_reservation_rm
   {f : spec.Reservation -> spec.State -> spec.Reservation × spec.State}
   (r : spec.Reservation)
   (final_check : spec.Reservation -> Unit -> Prop)
+  (wait_for : spec.Reservation -> Bool)
   (f_valid : ∀ (s : spec.State) (env_r : spec.Reservation),
     spec.validate (env_r + r) s →
     match f r s with
     | ⟨r', s'⟩ => spec.validate (env_r + r') s' ∧ final_check r' ⟨⟩
   )
-  : (atomic_read_modify f).valid_for_reservation r final_check :=by
-  intro s env_r initial_valid
+  : (atomic_read_modify f).valid_for_reservation r final_check wait_for :=by
+  intro s env_r _ initial_valid
   exact f_valid s env_r initial_valid
 
 theorem valid_for_reservation_read {T : Type}
   {f : spec.Reservation -> spec.State -> T × spec.Reservation}
   (r : spec.Reservation)
   (final_check : spec.Reservation -> T -> Prop)
+  (wait_for : spec.Reservation -> Bool)
   (f_valid : ∀ (s : spec.State) (env_r : spec.Reservation),
     spec.validate (env_r + r) s →
+    wait_for (env_r + r) →
     match f r s with
     | ⟨t, r'⟩ => spec.validate (env_r + r') s ∧ final_check r' t
   )
-  : (atomic_read f).valid_for_reservation r final_check :=by
-  intro s env_r initial_valid
-  exact f_valid s env_r initial_valid
+  : (atomic_read f).valid_for_reservation r final_check wait_for :=by
+  intro s env_r waited_for initial_valid
+  exact f_valid s env_r initial_valid waited_for
 
 theorem valid_for_reservation_assert
   {cond : spec.State -> Bool}
   (r : spec.Reservation)
+  (wait_for : spec.Reservation -> Bool)
   (assertion_succeeds : ∀ (s : spec.State) (env_r : spec.Reservation),
-    spec.validate (env_r + r) s → cond s
+    spec.validate (env_r + r) s →
+    wait_for (env_r + r) →
+    cond s
   )
-  : (atomic_assert cond).valid_for_reservation r λ _ _ => True :=by
-  intro s env_r initial_valid
-  have cond_true :=assertion_succeeds s env_r initial_valid
+  : (atomic_assert cond).valid_for_reservation r (λ _ _ => True) wait_for :=by
+  intro s env_r waited_for initial_valid
+  have cond_true :=assertion_succeeds s env_r initial_valid waited_for
   simp only [cond_true, atomic_assert, Mt.impl.Step.valid, and_true]
   exact initial_valid
 
