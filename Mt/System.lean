@@ -70,7 +70,9 @@ def mk_thread {T : Type} (task : TaskM spec T) : Thread spec := {
 namespace Thread
 
 def valid (thread : Thread spec) : Prop :=
-  thread.task.valid_for_reservation thread.reservation (λ _ _ => True) thread.wait_for
+  thread.task.valid_for_reservation thread.reservation
+    (λ r _ => r = IsReservation.empty)
+    thread.wait_for
 
 inductive IterationResult (spec : Spec) where
   | Done : spec.Reservation -> spec.State -> IterationResult spec
@@ -102,7 +104,9 @@ theorem valid.def (thread : Thread spec) :
     thread.wait_for (env_r + thread.reservation) →
     spec.validate (env_r + thread.reservation) state →
     match thread.iterate state with
-      | IterationResult.Done r' state' => spec.validate (env_r + r') state'
+      | IterationResult.Done r' state' =>
+          spec.validate (env_r + r') state' ∧
+          r' = IsReservation.empty
       | IterationResult.Panic .. => False
       | IterationResult.Running state' cont =>
         (spec.validate (env_r + cont.reservation) state') ∧ cont.valid :=by
@@ -363,20 +367,16 @@ theorem fundamental_validation_theorem (s : System spec)
         
         rename_i r state
         rw [<- other_reservations]
-        apply spec.reservations_can_be_dropped _ r
-
-        exact this wait_for initial_valid
+        have :=this wait_for initial_valid
+        rw [this.right, IsReservation.toIsCommutative.comm,
+          IsReservation.empty_add] at this
+        exact this.left
       . have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations i)
         simp only [h, <- decompose] at this
-
-        rename_i r state
-        rw [<- other_reservations]
-        apply spec.reservations_can_be_dropped _ r
-
         exact (this wait_for initial_valid).elim
       . have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations i)
         simp only [h, <- decompose] at this
-      
+        
         rename_i state cont
         have :=this wait_for initial_valid
         

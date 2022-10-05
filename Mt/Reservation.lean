@@ -129,8 +129,6 @@ structure Spec where
   Reservation : Type
   [is_reservation : IsReservation Reservation]
   validate : Reservation -> State -> Prop
-  reservations_can_be_dropped : -- if a thread drops its reservation, it should not break the system
-    ∀ (r r' : Reservation) (state : State), validate (r + r') state → validate r state
 
 end Mt
 

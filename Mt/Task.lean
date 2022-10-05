@@ -248,7 +248,9 @@ def valid_for_reservation {T : Type} (task : TaskM spec T) (reservation : spec.R
   impl.Step.valid (task reservation state) env_r final_check
 
 def valid_for_reservation' {T : Type} (task : TaskM spec T) (reservation : spec.Reservation) : Prop :=
-  valid_for_reservation task reservation (λ _ _ => True) (λ _ => true)
+  valid_for_reservation task reservation
+    (λ r _ => r = IsReservation.empty)
+    (λ _ => true)
 
 /-- Main theorem to justify the definition of `valid_for_reservation` -/
 theorem valid_for_reservation.def {T : Type} (task : TaskM spec T) (reservation : spec.Reservation)
@@ -277,11 +279,14 @@ theorem valid_for_reservation'.def {T : Type} (task : TaskM spec T) (reservation
     spec.validate (env_r + reservation) state →
     match task.iterate reservation state with
       | IterationResult.Done reservation' state' _ =>
-        spec.validate (env_r + reservation') state'
+        spec.validate (env_r + reservation') state' ∧
+        reservation' = IsReservation.empty
       | IterationResult.Panic .. => False
       | IterationResult.Continuation reservation' state' wait_for' cont =>
         (spec.validate (env_r + reservation') state') ∧
-        cont.valid_for_reservation reservation' (λ _ _ => True) wait_for' :=by
+        cont.valid_for_reservation reservation'
+          (λ r _ => r = IsReservation.empty)
+          wait_for' :=by
   rw [valid_for_reservation', valid_for_reservation.def]
   simp only [and_true, true_and, true_implies]
 
@@ -376,17 +381,19 @@ theorem valid_for_reservation_read {T : Type}
 theorem valid_for_reservation_assert
   {cond : spec.State -> Bool}
   (r : spec.Reservation)
+  (final_check : spec.Reservation -> Unit -> Prop)
   (wait_for : spec.Reservation -> Bool)
+  (final_check_holds : final_check r ⟨⟩)
   (assertion_succeeds : ∀ (s : spec.State) (env_r : spec.Reservation),
     spec.validate (env_r + r) s →
     wait_for (env_r + r) →
     cond s
   )
-  : (atomic_assert cond).valid_for_reservation r (λ _ _ => True) wait_for :=by
+  : (atomic_assert cond).valid_for_reservation r final_check wait_for :=by
   intro s env_r waited_for initial_valid
   have cond_true :=assertion_succeeds s env_r initial_valid waited_for
-  simp only [cond_true, atomic_assert, Mt.impl.Step.valid, and_true]
-  exact initial_valid
+  simp only [cond_true, atomic_assert, Mt.impl.Step.valid]
+  exact ⟨initial_valid, final_check_holds⟩
 
 end TaskM
 

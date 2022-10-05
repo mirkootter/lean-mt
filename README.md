@@ -160,7 +160,7 @@ operator with both properties for all reservations:
 
 For our reasoning framework, we want to decouple threads from
 each other as much as possible. We want to focus on one given
-thread at a time, and refer to everything outside to "the environment".
+thread at a time, and refer to everything outside as "the environment".
 
 It should not matter how many other threads they are. Only what
 they do (or could do, potentially). If each of the other threads
@@ -180,11 +180,11 @@ the reservation of the environment.
 ## The specification
 
 Our main goal is to reason about a multithreaded system by
-decoupling the threads from each other. Reasong about the system
+decoupling the threads from each other. Reasoning about the system
 becomes reasoning about one thread at a time, even one line at a time.
 
-To do that, we know that after each the situation may have
-completely changed. If the other threads may do virtually anything,
+To do that, we know that after each iteration the situation may have
+completely changed. If the other threads may do virtually everything,
 we would not be able to reason about anything. That's what the
 specification is for. It describes precisely what a thread can do
 and what not. If all threads of a given system follow the same
@@ -196,17 +196,3 @@ the following:
 * The type `Reservation` which represents the threadlocal reservations
 * A validation predicate `Reservation → State → Prop`. For a valid
   system, this predicate must hold at all times
-* A proof that reservations may be dropped, i.e. a proof of the
-  following theorem:
-  
-  ```lean
-      ∀ (env_r r : Reservation) (state : State),
-        validate (env_r + r) state →
-        validate env_r state
-  ```
-
-  Threads may complete (or even panic), which essentially drops
-  its reservation. This should not cause the validation to fail.
-
-  In the future, we might choose to move this requirement out
-  of the specification into a requirement for valid systems only.
