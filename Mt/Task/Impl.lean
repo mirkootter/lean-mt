@@ -38,7 +38,28 @@ inductive is_direct_cont {T : Type} : TaskM spec T -> TaskM spec T -> Prop
     (iteration : p r s = IterationResult.Running r' s' block_until cont)
     : is_direct_cont cont p
 
-theorem is_direct_cont.wf {T : Type} : WellFounded (@is_direct_cont spec T) :=sorry
+theorem is_direct_cont.wf {T : Type} : WellFounded (@is_direct_cont spec T) :=by
+  constructor
+  intro p
+  constructor
+  intro cont is_cont
+  cases is_cont
+  rename_i r r' s s' bu iteration
+  exact helper (p r s) cont iteration
+
+where
+  helper (it : IterationResult spec T) (p : TaskM spec T) {r s block_until} :
+    it = IterationResult.Running r s block_until p → Acc is_direct_cont p :=by
+    revert p r s block_until
+    induction it
+    . intros ; contradiction
+    . intros ; contradiction
+    . intro p r s bu h
+      rename_i r' s' bu' p' IH
+      injection h ; rename_i h ; rw [h] at IH
+      constructor
+      intro cont is_cont ; cases is_cont ; rename_i h
+      exact IH _ _ _ h
 
 instance instWf {T : Type} : WellFoundedRelation (TaskM spec T) where
   rel :=is_direct_cont
