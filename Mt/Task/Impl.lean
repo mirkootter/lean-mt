@@ -22,6 +22,9 @@ def atomic_read_modify_read
 | r, s => match f r s with
   | ⟨t, r', s'⟩ => IterationResult.Done r' s' t
 
+def panic {T : Type} (msg : String) : TaskM spec T
+| r, s => IterationResult.Panic r s msg
+
 def atomic_assert
   (cond : spec.Reservation -> spec.State -> Bool)
   : TaskM spec Unit

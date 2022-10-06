@@ -14,6 +14,16 @@ inductive TaskM.IterationResult (spec : Spec) (T : Type)
 
 variable {spec : Spec}
 
+def TaskM.IterationResult.reservation {T spec} : IterationResult spec T -> spec.Reservation
+| Done r .. => r
+| Panic r .. => r
+| Running r .. => r
+
+def TaskM.IterationResult.state {T spec} : IterationResult spec T -> spec.State
+| Done _ s _ => s
+| Panic _ s _ => s
+| Running _ s .. => s
+
 instance TaskM.instMonad : Monad (TaskM spec) where
   pure :=impl.TaskM.pure
   bind :=impl.TaskM.bind
@@ -40,6 +50,9 @@ def TaskM.atomic_read {T : Type}
   : TaskM spec T :=
   atomic_read_modify_read λ r s => match f r s with
     | ⟨t, r'⟩ => ⟨t, r', s⟩
+
+def TaskM.panic {T : Type} (msg : String) : TaskM spec T :=
+  impl.TaskM.panic msg
 
 def TaskM.atomic_assert
   (cond : spec.Reservation -> spec.State -> Bool)
@@ -89,6 +102,11 @@ theorem TaskM.iterate_read
   iterate (atomic_read f) r s = match f r s with
     | ⟨t, r'⟩ => IterationResult.Done r' s t :=by
   apply iterate_rmr
+
+theorem TaskM.iterate_panic {T : Type} (msg : String)
+  : ∀ (r : spec.Reservation) (s : spec.State),
+    iterate (panic (T :=T) msg) r s = IterationResult.Panic r s msg :=by
+  intros ; rfl
 
 theorem TaskM.iterate_assert
   (cond : spec.Reservation -> spec.State -> Bool)
