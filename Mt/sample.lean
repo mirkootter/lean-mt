@@ -51,13 +51,13 @@ def thread1 : TaskM spec Unit :=do
 
   atomic_assert fun _ => px ≥ py
 
-theorem thread1_valid : thread1.valid_for_reservation' ReservationInstance.empty :=by
-  rw [valid_for_reservation']
-  apply valid_for_reservation_bind _ _ _ (λ _ => true) λ (r : spec.Reservation) _ => r.luft = 1
+theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
+  rw [valid']
+  apply valid_bind λ _ (r : spec.Reservation) => r.luft = 1
   . -- validate ++x
     ---------------
-    apply valid_for_reservation_rm
-    intro ⟨x, y⟩ ⟨env_luft, env_min_x⟩ initial_valid
+    apply valid_rm
+    intro ⟨env_luft, env_min_x⟩ ⟨x, y⟩ _ initial_valid
     simp only [and_true]
 
     have : x ≥ y + env_luft ∧ x ≥ Nat.max env_min_x 0 :=initial_valid
@@ -74,12 +74,12 @@ theorem thread1_valid : thread1.valid_for_reservation' ReservationInstance.empty
         x ≤ x + 1 :=Nat.le_succ _
   
   intro ⟨luft, min_x⟩ ⟨⟩ luft_def
-  apply valid_for_reservation_bind _ _ _ (λ _ => true) λ _ _ => True
+  apply valid_bind λ _ _ => True
   . -- validate ++y knowing luft = 1
     --------------------------------
     have luft_def : luft = 1 :=luft_def
-    apply valid_for_reservation_rm
-    intro ⟨x, y⟩ ⟨env_luft, env_min_x⟩ initial_valid
+    apply valid_rm
+    intro ⟨env_luft, env_min_x⟩ ⟨x, y⟩ _ initial_valid
     simp only [and_true]
     rw [luft_def] at initial_valid
 
@@ -92,11 +92,11 @@ theorem thread1_valid : thread1.valid_for_reservation' ReservationInstance.empty
   
   clear luft min_x luft_def
   intro ⟨luft, min_x⟩ ⟨⟩ ⟨⟩
-  apply valid_for_reservation_bind (spec :=spec) _ _ _ (λ _ => true) λ ⟨_, min_x⟩ y => min_x = y
+  apply valid_bind (spec :=spec) λ y ⟨_, min_x⟩ => min_x = y
   . -- validate `let py = y` with `min_x := py`
     -------------------------------------------
-    apply valid_for_reservation_read
-    intro ⟨x, y⟩ ⟨env_luft, (env_min_x : Nat)⟩ initial_valid _
+    apply valid_read
+    intro ⟨env_luft, (env_min_x : Nat)⟩ ⟨x, y⟩ _ initial_valid
     simp only [and_true]
 
     have : x ≥ y + (env_luft + luft) ∧ x ≥ Nat.max env_min_x min_x :=initial_valid
@@ -119,13 +119,13 @@ theorem thread1_valid : thread1.valid_for_reservation' ReservationInstance.empty
 
   clear luft min_x
   intro ⟨luft, min_x⟩ (py : Nat) min_x_def
-  apply valid_for_reservation_bind (spec :=spec) _ _ _ (λ _ => true)
-    λ (r : Reservation) x => x ≥ py ∧ r = IsReservation.empty
+  apply valid_bind (spec :=spec)
+    λ x (r : Reservation) => x ≥ py ∧ r = IsReservation.empty
   . -- validate `let px = x` knowing min_x = py
     -------------------------------------------
     have min_x_def : min_x = py :=min_x_def
-    apply valid_for_reservation_read
-    intro ⟨x, y⟩ ⟨env_luft, (env_min_x : Nat)⟩ initial_valid _
+    apply valid_read
+    intro ⟨env_luft, (env_min_x : Nat)⟩ ⟨x, y⟩ _ initial_valid
     simp only [and_true]
 
     have : x ≥ y + (env_luft + luft) ∧ x ≥ Nat.max env_min_x min_x :=initial_valid
@@ -149,7 +149,7 @@ theorem thread1_valid : thread1.valid_for_reservation' ReservationInstance.empty
   intro ⟨luft, min_x⟩ (px : Nat) ⟨px_gt_py, final_check⟩
 
   rw [final_check]
-  apply valid_for_reservation_assert (spec :=spec) _ _ _ rfl
+  apply valid_assert (spec :=spec) rfl
   . -- validate `assert px ≥ py`
     ----------------------------
     intros

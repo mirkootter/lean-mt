@@ -24,13 +24,13 @@ def thread1 : TaskM spec Unit :=do
 
   atomic_assert fun ⟨x, y⟩ => x ≥ y
 
-theorem thread1_valid : thread1.valid_for_reservation' (0 : Nat) :=by
-  rw [valid_for_reservation']
-  apply valid_for_reservation_bind (spec :=spec) _ _ _ (λ _ => true) λ (luft : Nat) _ => luft = 1
+theorem thread1_valid : thread1.valid' (0 : Nat) :=by
+  rw [valid']
+  apply valid_bind (spec :=spec) λ _ (luft : Nat) => luft = 1
   . -- validate ++x
     ---------------
-    apply valid_for_reservation_rm
-    intro ⟨x, y⟩ (env_luft : Nat) initial_valid
+    apply valid_rm
+    intro (env_luft : Nat) ⟨x, y⟩ _ initial_valid
     simp only [and_true]
 
     have : x ≥ y + env_luft :=initial_valid
@@ -39,11 +39,11 @@ theorem thread1_valid : thread1.valid_for_reservation' (0 : Nat) :=by
     exact Nat.succ_le_succ (by assumption)
   
   intro (luft : Nat) ⟨⟩ luft_def
-  apply valid_for_reservation_bind (spec :=spec) _ _ _ (λ _ => true) λ (luft : Nat) _ => luft = 0
+  apply valid_bind (spec :=spec) λ _ (luft : Nat) => luft = 0
   . -- validate ++y knowing luft = 1
     --------------------------------
-    apply valid_for_reservation_rm
-    intro ⟨x, y⟩ (env_luft : Nat) initial_valid
+    apply valid_rm
+    intro (env_luft : Nat) ⟨x, y⟩ _ initial_valid
     simp only [and_true]
 
     rw [luft_def] at initial_valid
@@ -55,10 +55,10 @@ theorem thread1_valid : thread1.valid_for_reservation' (0 : Nat) :=by
   
   clear luft luft_def
   intro (luft : Nat) ⟨⟩ luft_def
-  apply valid_for_reservation_assert (spec :=spec) _ _ _ luft_def
+  apply valid_assert (spec :=spec) luft_def
   . -- validate `assert x ≥ y`
     ----------------------------
-    intro ⟨x, y⟩ (env_luft : Nat) initial_valid _
+    intro (env_luft : Nat) ⟨x, y⟩ _ initial_valid
 
     have : x ≥ y + (env_luft + luft) :=initial_valid
     show decide (x ≥ y) = true
