@@ -1,6 +1,13 @@
 import Mt.Task
 
 -- utils
+theorem forall_ext {α : Type} {f g : α -> Prop}
+  (h : ∀ a : α, f a = g a) : (∀ a : α, f a) = (∀ a : α, g a) :=by
+  apply propext
+  constructor <;> intro h' a
+  . exact Eq.mp (h a) (h' a)
+  . exact Eq.mpr (h a) (h' a)
+
 theorem list_get_in {T : Type u} (l : List T) (idx : Fin l.length)
   : (l.get idx) ∈ l :=match l, idx with
   | a::_, ⟨0, _⟩ => List.Mem.head a _
@@ -55,7 +62,7 @@ namespace Mt
 structure Thread (spec : Spec) where
   T : Type
   reservation : spec.Reservation
-  wait_for : spec.Reservation -> Bool
+  block_until : spec.Reservation -> Bool
   task : TaskM spec T
 
 variable {spec : Spec}
@@ -64,15 +71,15 @@ local instance : IsReservation spec.Reservation :=spec.is_reservation
 def mk_thread {T : Type} (task : TaskM spec T) : Thread spec := {
   T
   reservation := IsReservation.empty
-  wait_for :=λ _ => true
+  block_until :=λ _ => true
   task }
 
 namespace Thread
 
 def valid (thread : Thread spec) : Prop :=
-  thread.task.valid_for_reservation thread.reservation
-    (λ r _ => r = IsReservation.empty)
-    thread.wait_for
+  thread.task.valid thread.reservation
+    thread.block_until
+    (λ _ r => r = IsReservation.empty)
 
 inductive IterationResult (spec : Spec) where
   | Done : spec.Reservation -> spec.State -> IterationResult spec
@@ -95,27 +102,30 @@ def iterate : Thread spec -> spec.State -> IterationResult spec
     match task.iterate r state with
     | TaskM.IterationResult.Done r state' _ => IterationResult.Done r state'
     | TaskM.IterationResult.Panic r state' _ => IterationResult.Panic r state'
-    | TaskM.IterationResult.Continuation reservation state' wait_for task => 
-      IterationResult.Running state' { T, reservation, wait_for, task }
+    | TaskM.IterationResult.Running reservation state' block_until task => 
+      IterationResult.Running state' { T, reservation, block_until, task }
 
 theorem valid.def (thread : Thread spec) :
   thread.valid = 
-    ∀ (state : spec.State) (env_r : spec.Reservation),
-    thread.wait_for (env_r + thread.reservation) →
-    spec.validate (env_r + thread.reservation) state →
-    match thread.iterate state with
-      | IterationResult.Done r' state' =>
-          spec.validate (env_r + r') state' ∧
+    ∀ env_r s,
+    thread.block_until (env_r + thread.reservation) →
+    spec.validate (env_r + thread.reservation) s →
+    match thread.iterate s with
+      | IterationResult.Done r' s' =>
+          spec.validate (env_r + r') s' ∧
           r' = IsReservation.empty
       | IterationResult.Panic .. => False
-      | IterationResult.Running state' cont =>
-        (spec.validate (env_r + cont.reservation) state') ∧ cont.valid :=by
-  simp only [valid, iterate]
-  rw [TaskM.valid_for_reservation.def]
-  apply forall_ext ; intro state
+      | IterationResult.Running s' cont =>
+        (spec.validate (env_r + cont.reservation) s') ∧ cont.valid :=by
+  simp only [valid]
+  rw [TaskM.valid]
+  
   apply forall_ext ; intro env_r
-  cases TaskM.iterate thread.task thread.reservation state
-  <;> simp only [and_true]
+  apply forall_ext ; intro s
+  rw [iterate]
+
+  cases h : TaskM.iterate thread.task thread.reservation s
+  <;> simp only [h]
 
 end Thread
 
@@ -188,7 +198,7 @@ theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s.threads) 
 
 def iterate (s : System spec) : s.ThreadIndex -> System spec
   | thread_idx =>
-    if (s.threads.get thread_idx).wait_for (s.reservations) then 
+    if (s.threads.get thread_idx).block_until (s.reservations) then 
       match (s.threads.get thread_idx).iterate s.state with
         | Thread.IterationResult.Done _ state =>
           {
@@ -212,7 +222,7 @@ def iterate (s : System spec) : s.ThreadIndex -> System spec
       s
 
 theorem iterate_threads (s : System spec) (thread_idx : s.ThreadIndex)
-  (waited_for : (s.threads.get thread_idx).wait_for s.reservations) :
+  (waited_for : (s.threads.get thread_idx).block_until s.reservations) :
   (s.iterate thread_idx).threads =
     match (s.threads.get thread_idx).iterate s.state with
       | Thread.IterationResult.Done .. => s.threads.eraseIdx thread_idx.val
@@ -223,7 +233,7 @@ theorem iterate_threads (s : System spec) (thread_idx : s.ThreadIndex)
   cases h : Thread.iterate (List.get s.threads thread_idx) s.state <;> rfl
 
 theorem iterate_panics (s : System spec) (thread_idx : s.ThreadIndex)
-  (waited_for : (s.threads.get thread_idx).wait_for s.reservations) :
+  (waited_for : (s.threads.get thread_idx).block_until s.reservations) :
   (s.iterate thread_idx).panics =
     match (s.threads.get thread_idx).iterate s.state with
       | Thread.IterationResult.Done .. => s.panics
@@ -252,20 +262,20 @@ theorem reduces_to_or_eq.trans {a b c : System spec} :
 theorem single_reduce_get {s s' : System spec} (r : s.reduces_single s') :
   ∀ t', t' ∈ s'.threads → ∃ (t : _) (state : spec.State), t ∈ s.threads ∧ (
   t = t' ∨ (
-    t.wait_for s.reservations ∧
+    t.block_until s.reservations ∧
     t.iterate s.state = Thread.IterationResult.Running state t')) :=by
   intro t' t'_def
   
   apply Exists.elim r ; intro thread_idx h
-  cases wait_for : Thread.wait_for (List.get s.threads thread_idx) s.reservations
+  cases block_until : Thread.block_until (List.get s.threads thread_idx) s.reservations
   next =>
     . exists t', s.state
       constructor
-      . simp only [iterate, wait_for, ite_false] at h
+      . simp only [iterate, block_until, ite_false] at h
         rw [h]
         exact t'_def
       . exact Or.inl rfl
-  have :=iterate_threads s thread_idx wait_for
+  have :=iterate_threads s thread_idx block_until
   rw [h] at this ; clear h
   cases h' : Thread.iterate (List.get s.threads thread_idx) s.state
   all_goals (rw [h'] at this ; simp only [] at this)
@@ -283,7 +293,7 @@ theorem single_reduce_get {s s' : System spec} (r : s.reduces_single s') :
       rw [<- h']
       constructor
       . exact list_get_in ..
-      . exact Or.inr ⟨wait_for, rfl⟩
+      . exact Or.inr ⟨block_until, rfl⟩
     . exists t' ; exists state
       exact ⟨h, Or.inl rfl⟩
 
@@ -318,8 +328,6 @@ theorem fundamental_validation_theorem (s : System spec)
   induction h
   . clear s s' ; rename_i s s' s_single_reduces_to_s'
     
-    
-
     constructor
     . -- show that threads are still valid after iteration
       intro t' t'_def
@@ -331,7 +339,7 @@ theorem fundamental_validation_theorem (s : System spec)
       . have :=threads_valid t h.left
         apply (decompose_reservation s h.left).elim
         intro j ⟨_, decompose⟩
-        have :=(Thread.valid.def t).mp this s.state (s.other_reservations j)
+        have :=(Thread.valid.def t).mp this (s.other_reservations j) s.state
         rw [h'.right] at this
         rw [<- decompose] at this
         exact (this h'.left initial_valid).right
@@ -340,7 +348,7 @@ theorem fundamental_validation_theorem (s : System spec)
     intro i iteration ; rw [<- iteration]
     simp only [iterate]
     generalize t_def : List.get s.threads i = t
-    cases wait_for : Thread.wait_for t (reservations s)
+    cases block_until : Thread.block_until t (reservations s)
     next =>
       . simp only [ite_false]
         exact ⟨no_panics_yet, initial_valid⟩
@@ -353,32 +361,32 @@ theorem fundamental_validation_theorem (s : System spec)
       apply (decompose_reservation s this).elim
       intro j ⟨_, decompose⟩
 
-      have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations j)
+      have :=(Thread.valid.def t).mp t_valid (s.other_reservations j) s.state
       simp only [h, <- decompose] at this
-      exact (this wait_for initial_valid).elim
+      exact (this block_until initial_valid).elim
     . -- show that state/reservations are still valid after the iteration
       have t_is_sthread :=list_get_in s.threads i ; rw [t_def] at t_is_sthread
       have t_valid :=threads_valid t t_is_sthread
       have decompose :=s.decompose_reservation' i t t_def.symm
       simp only [ite_true]
       cases h : Thread.iterate t s.state <;> (simp only [reservations])
-      . have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations i)
+      . have :=(Thread.valid.def t).mp t_valid (s.other_reservations i) s.state
         simp only [h, <- decompose] at this
         
         rename_i r state
         rw [<- other_reservations]
-        have :=this wait_for initial_valid
+        have :=this block_until initial_valid
         rw [this.right, IsReservation.toIsCommutative.comm,
           IsReservation.empty_add] at this
         exact this.left
-      . have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations i)
+      . have :=(Thread.valid.def t).mp t_valid (s.other_reservations i) s.state
         simp only [h, <- decompose] at this
-        exact (this wait_for initial_valid).elim
-      . have :=(Thread.valid.def t).mp t_valid s.state (s.other_reservations i)
+        exact (this block_until initial_valid).elim
+      . have :=(Thread.valid.def t).mp t_valid (s.other_reservations i) s.state
         simp only [h, <- decompose] at this
         
         rename_i state cont
-        have :=this wait_for initial_valid
+        have :=this block_until initial_valid
         
         have temp :=System.decompose_reservation''
           (List.set s.threads i.val cont)
