@@ -76,16 +76,13 @@ theorem bind_assoc {U V W : Type}
   apply funext ; intro s0
   simp only [bind_def]
   induction mu reservation0 s0 <;> try rfl
-  rename_i cont IH 
-  --simp only [bind_def]
-
-  --simp only [Step.chain]
+  rename_i r' s' block_until cont IH
   simp only []
-  conv =>
-    lhs ; arg 4 ; intro reservation s
-    simp only [bind_def]
-    rw [IH reservation s]
-    
+  simp only [<- bind_def] at IH
+  apply congrArg (IterationResult.Running _ _ _)
+  apply funext ; intro r
+  apply funext ; intro s
+  exact IH ..
 
 end TaskM
 
