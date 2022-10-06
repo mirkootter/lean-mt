@@ -55,7 +55,7 @@ def TaskM.panic {T : Type} (msg : String) : TaskM spec T :=
   impl.TaskM.panic msg
 
 def TaskM.atomic_assert
-  (cond : spec.Reservation -> spec.State -> Bool)
+  (cond : spec.State -> Bool)
   : TaskM spec Unit :=impl.TaskM.atomic_assert cond
 
 def TaskM.iterate {T : Type} : TaskM spec T ->
@@ -109,15 +109,15 @@ theorem TaskM.iterate_panic {T : Type} (msg : String)
   intros ; rfl
 
 theorem TaskM.iterate_assert
-  (cond : spec.Reservation -> spec.State -> Bool)
+  (cond : spec.State -> Bool)
   : ∀ r s,
-  iterate (atomic_assert cond) r s = if cond r s then
+  iterate (atomic_assert cond) r s = if cond s then
     IterationResult.Done r s ⟨⟩
   else
     IterationResult.Panic r s "Assertion failed" :=by
   intro r s
   simp only [atomic_assert, impl.TaskM.atomic_assert, iterate]
-  cases cond r s <;> simp only [ite_false, ite_true]
+  cases cond s <;> simp only [ite_false, ite_true]
 
 inductive TaskM.is_direct_cont {T : Type} : TaskM spec T -> TaskM spec T -> Prop
 | running
