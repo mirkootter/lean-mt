@@ -33,6 +33,12 @@ def atomic_assert
   else
     IterationResult.Panic r s "Assertion failed"
 
+def atomic_blocking_rmr
+  (block_until : spec.Reservation -> Bool)
+  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
+  : TaskM spec T
+| r, s => IterationResult.Running r s block_until (atomic_read_modify_read f)
+
 inductive is_direct_cont {T : Type} : TaskM spec T -> TaskM spec T -> Prop
 | running
     {p cont : TaskM spec T}

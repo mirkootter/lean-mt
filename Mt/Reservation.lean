@@ -133,20 +133,84 @@ structure Spec where
 end Mt
 
 namespace Mt
-  instance : IsReservation Nat where
-    assoc     := Nat.add_assoc
-    comm      := Nat.add_comm
-    empty     := 0
-    empty_add := Nat.zero_add
+instance : IsReservation Nat where
+  assoc     := Nat.add_assoc
+  comm      := Nat.add_comm
+  empty     := 0
+  empty_add := Nat.zero_add
 
-  def LowerBound :=Nat
+def LowerBound :=Nat
 
-  instance : Add LowerBound :=⟨Nat.max⟩
+instance : Add LowerBound :=⟨Nat.max⟩
 
-  instance LowerBound.instance : IsReservation LowerBound where
-    assoc :=nat_max_assoc
-    comm :=nat_max_comm
-    empty :=(0 : Nat)
-    empty_add :=nat_zero_max
+instance LowerBound.instance : IsReservation LowerBound where
+  assoc :=nat_max_assoc
+  comm :=nat_max_comm
+  empty :=(0 : Nat)
+  empty_add :=nat_zero_max
+
+structure UnitReservation
+
+instance : IsReservation UnitReservation where
+  add := λ _ _ => ⟨⟩
+  assoc :=by intros ; rfl
+  comm :=by intros ; rfl
+  empty :=⟨⟩
+  empty_add :=by intros ; rfl
+
+inductive Lock (T : Type) where
+| Unlocked
+| Locked : T -> Lock T
+| Invalid
+
+def Lock.is_locked {T : Type} : Lock T -> Bool
+| Locked _ => true
+| _ => false
+
+def Lock.is_locked_and_valid {T : Type} (valid : T -> Prop) : Lock T -> Prop
+| Locked s => valid s
+| _ => False
+
+def Lock.is_unlocked {T : Type} : Lock T -> Bool
+| Unlocked => true
+| _ => false
+
+def Lock.add {T : Type} : Lock T -> Lock T -> Lock T
+| Unlocked, a => a
+| a, Unlocked => a
+| _, _ => Invalid
+
+theorem Lock.eq_of_is_unlocked {T : Type} {r : Lock T} :
+  r.is_unlocked → r = Lock.Unlocked :=by
+  cases r
+  . intros ; rfl
+  . intros ; contradiction
+  . intros ; contradiction
+
+instance {T : Type} : Add (Lock T) :=⟨Lock.add⟩
+
+theorem Lock.unlocked_add {T : Type} : ∀ a : Lock T, Unlocked + a = a :=by
+  intro a ; cases a <;> rfl
+
+theorem Lock.add_unlocked {T : Type} : ∀ a : Lock T, a + Unlocked = a :=by
+  intro a ; cases a <;> rfl
+
+theorem Lock.invalid_add {T : Type} : ∀ a : Lock T, Invalid + a = Invalid :=by
+  intro a ; cases a <;> rfl
+
+theorem Lock.add_comm {T : Type} : ∀ a b : Lock T, a + b = b + a :=by
+  intro a b
+  cases a <;> cases b <;> rfl
+
+theorem Lock.add_assoc {T : Type} : ∀ a b c : Lock T,
+  a + b + c = a + (b + c) :=by
+  intro a b c
+  cases a <;> cases b <;> cases c <;> rfl
+
+instance {T : Type} : IsReservation (Lock T) where
+  assoc :=Lock.add_assoc
+  comm :=Lock.add_comm
+  empty :=Lock.Unlocked
+  empty_add :=Lock.unlocked_add
 
 end Mt

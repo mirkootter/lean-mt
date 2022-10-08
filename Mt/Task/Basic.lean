@@ -58,6 +58,11 @@ def TaskM.atomic_assert
   (cond : spec.State -> Bool)
   : TaskM spec Unit :=impl.TaskM.atomic_assert cond
 
+def TaskM.atomic_blocking_rmr
+  (block_until : spec.Reservation -> Bool)
+  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
+  : TaskM spec T :=impl.TaskM.atomic_blocking_rmr block_until f
+
 def TaskM.iterate {T : Type} : TaskM spec T ->
   spec.Reservation -> spec.State -> IterationResult spec T :=
   λ p r s => match p r s with
@@ -118,6 +123,13 @@ theorem TaskM.iterate_assert
   intro r s
   simp only [atomic_assert, impl.TaskM.atomic_assert, iterate]
   cases cond s <;> simp only [ite_false, ite_true]
+
+theorem TaskM.iterate_blocking_rmr
+  (block_until : spec.Reservation -> Bool)
+  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
+  : ∀ r s,
+  iterate (atomic_blocking_rmr block_until f) r s = IterationResult.Running r s
+    block_until (atomic_read_modify_read f) :=by intros ; rfl
 
 inductive TaskM.is_direct_cont {T : Type} : TaskM spec T -> TaskM spec T -> Prop
 | running

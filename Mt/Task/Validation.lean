@@ -112,4 +112,20 @@ theorem valid_assert
   simp only [ite_true]
   exact ⟨initial_valid, motive_holds⟩
 
+theorem valid_blocking_rmr
+  {block_until : spec.Reservation -> Bool}
+  {f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State}
+  {r assuming motive}
+  (f_valid : ∀ env_r s,
+    block_until (env_r + r) →
+    spec.validate (env_r + r) s →
+    match f r s with
+    | ⟨t, r', s'⟩ => spec.validate (env_r + r') s' ∧ motive t r'
+  )
+  : (atomic_blocking_rmr block_until f).valid r assuming motive :=by
+  rw [valid]
+  intro env_r s _ initial_valid
+  simp only [iterate_blocking_rmr, initial_valid, true_and]
+  exact valid_rmr f_valid
+
 end Mt.TaskM
