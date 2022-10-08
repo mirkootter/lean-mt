@@ -2,6 +2,8 @@ import Mt.Reservation
 import Mt.Task
 import Mt.System
 
+namespace SampleMutex
+
 structure State where
   x : Nat
   y : Nat
@@ -188,3 +190,5 @@ theorem thread2_valid : thread2.valid' Mt.Lock.Unlocked :=by
     simp only [initial_valid.elim_locked]
     rw [x_def.symm, y_def.symm] ; clear x_def y_def
     exact ⟨validate.unlocked rfl, rfl⟩
+
+end SampleMutex

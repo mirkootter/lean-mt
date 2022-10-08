@@ -2,6 +2,8 @@ import Mt.Reservation
 import Mt.Task
 import Mt.System
 
+namespace SampleSimple
+
 structure State where
   x : Nat
   y : Nat
@@ -66,3 +68,5 @@ theorem thread1_valid : thread1.valid' (0 : Nat) :=by
     exact decide_eq_true <| calc
       y ≤ y + (env_luft + luft) :=by simp_arith
       _ ≤ x                     :=by assumption
+
+end SampleSimple

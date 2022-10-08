@@ -1,6 +1,9 @@
 import Mt.Reservation
 import Mt.Task
 import Mt.System
+import Mt.Utils.Nat
+
+namespace Sample
 
 structure State where
   x : Nat
@@ -108,10 +111,10 @@ theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
         y + env_luft ≤ y + (env_luft + luft) :=by simp_arith
                    _ ≤ x                     :=by assumption
     . show Nat.max env_min_x y ≤ x
-      apply nat_max_le.mpr ; constructor
+      apply Utils.Nat.max_le.mpr ; constructor
       . show env_min_x ≤ x
         rename x ≥ Nat.max env_min_x min_x => h
-        exact (nat_max_le.mp h).left
+        exact (Utils.Nat.max_le.mp h).left
       . show y ≤ x
         exact calc
           y ≤ y + (env_luft + luft) :=by simp_arith
@@ -137,13 +140,13 @@ theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
         y + env_luft ≤ y + (env_luft + luft) :=by simp_arith
                    _ ≤ x                     :=by assumption
     . show x ≥ Nat.max env_min_x 0
-      rw [nat_max_zero]
+      rw [Utils.Nat.max_zero]
       rename x ≥ Nat.max env_min_x min_x => h
-      exact (nat_max_le.mp h).left
+      exact (Utils.Nat.max_le.mp h).left
     . show x ≥ py
       suffices x ≥ min_x by rw [<- min_x_def] ; assumption
       rename x ≥ Nat.max env_min_x min_x => h
-      exact (nat_max_le.mp h).right
+      exact (Utils.Nat.max_le.mp h).right
   
   clear luft min_x min_x_def
   intro ⟨luft, min_x⟩ (px : Nat) ⟨px_gt_py, final_check⟩
@@ -154,3 +157,5 @@ theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
     ----------------------------
     intros
     simp only [px_gt_py]
+
+end Sample
