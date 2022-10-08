@@ -1,5 +1,8 @@
 # Framework for reasoning about parallel algorithms
 API Documentation: https://mirkootter.github.io/lean-mt-doc/
+
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/mirkootter/lean-mt)
+
 ## Motivation
 Multithreaded algorithms can be very hard to reason about. For simple problems, many developers are able to somehow "see" that the code is correct, but precise argumentation or even formal proofs are much more difficult, even for the simplest of problems.
 #### Sample 1
