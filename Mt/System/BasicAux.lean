@@ -1,5 +1,5 @@
 import Mt.System.Basic
-import Mt.Utils
+import Mt.Utils.List
 
 namespace Mt.System
 
@@ -43,7 +43,7 @@ protected theorem decompose_reservation' (s : System spec) (thread_idx : s.Threa
 protected theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s.threads) :
   ∃ idx : s.ThreadIndex, s.threads.get idx = t ∧
   s.reservations = (s.other_reservations idx) + t.reservation :=by
-  apply (list_index_exists s.threads t_def).elim
+  apply (List.index_exists s.threads t_def).elim
   intro thread_idx idx_correct
   exists thread_idx
   exact ⟨idx_correct, s.decompose_reservation' thread_idx t idx_correct.symm⟩
@@ -68,20 +68,20 @@ theorem single_reduce_elim {s s' : System spec} (r : s.reduces_single s') :
   rw [h] at this ; clear h
   cases h' : Thread.iterate (List.get s.threads thread_idx) s.state
   all_goals (rw [h'] at this ; simp only [] at this)
-  . have :=list_erase_subset s.threads thread_idx.val (this.subst t'_def)
+  . have :=List.erase_subset s.threads thread_idx.val (this.subst t'_def)
     exists t' ; exists s.state
     exact ⟨this, Or.inl rfl⟩
-  . have :=list_erase_subset s.threads thread_idx.val (this.subst t'_def)
+  . have :=List.erase_subset s.threads thread_idx.val (this.subst t'_def)
     exists t' ; exists s.state
     exact ⟨this, Or.inl rfl⟩
   . rename_i state cont
-    cases list_set_subset s.threads thread_idx.val cont (this.subst t'_def) <;> rename_i h
+    cases List.set_subset s.threads thread_idx.val cont (this.subst t'_def) <;> rename_i h
     . rw [h]
       exists List.get s.threads thread_idx
       exists state
       rw [<- h']
       constructor
-      . exact list_get_in ..
+      . exact List.get_in ..
       . exact Or.inr ⟨block_until, rfl⟩
     . exists t' ; exists state
       exact ⟨h, Or.inl rfl⟩

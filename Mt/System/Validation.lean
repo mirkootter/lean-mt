@@ -1,6 +1,6 @@
 import Mt.System.Basic
 import Mt.System.BasicAux
-import Mt.Utils
+import Mt.Utils.List
 
 namespace Mt.System
 
@@ -67,7 +67,7 @@ theorem fundamental_validation_theorem (s : System spec)
     constructor
     . -- show s'.panic = 0, i.e. iterations do not panic
       cases h : Thread.iterate t s.state <;> (simp only [] ; try assumption)
-      have :=list_get_in s.threads i ; rw [t_def] at this
+      have :=List.get_in s.threads i ; rw [t_def] at this
       have t_valid :=threads_valid t this
 
       apply (System.decompose_reservation s this).elim
@@ -77,7 +77,7 @@ theorem fundamental_validation_theorem (s : System spec)
       simp only [h, <- decompose] at this
       exact (this block_until initial_valid).elim
     . -- show that state/reservations are still valid after the iteration
-      have t_is_sthread :=list_get_in s.threads i ; rw [t_def] at t_is_sthread
+      have t_is_sthread :=List.get_in s.threads i ; rw [t_def] at t_is_sthread
       have t_valid :=threads_valid t t_is_sthread
       have decompose :=s.decompose_reservation' i t t_def.symm
       simp only [ite_true]
@@ -107,9 +107,9 @@ theorem fundamental_validation_theorem (s : System spec)
             _ = (List.set s.threads i.val cont).length :=by simp
           ⟩
           cont
-          (Eq.symm <| list_get_of_set s.threads i.val cont _)
+          (Eq.symm <| List.get_of_set s.threads i.val cont _)
         rw [temp] ; clear temp
-        simp only [erase_set]
+        simp only [List.erase_set]
         rw [<- other_reservations]
         exact this.left
   . rename_i IHab IHbc
