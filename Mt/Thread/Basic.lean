@@ -5,8 +5,7 @@ namespace Mt
 
 structure Thread (spec : Spec) where
   T : Type
-  reservation : spec.Reservation
-  block_until : spec.Reservation -> Bool
+  block_until : spec.State -> Bool
   task : TaskM spec T
 
 variable {spec : Spec}
@@ -14,62 +13,70 @@ local instance : IsReservation spec.Reservation :=spec.is_reservation
 
 def mk_thread {T : Type} (task : TaskM spec T) : Thread spec := {
   T
-  reservation := IsReservation.empty
   block_until :=λ _ => true
   task }
 
 namespace Thread
 
 inductive IterationResult (spec : Spec) where
-  | Done : spec.Reservation -> spec.State -> IterationResult spec
-  | Panic : spec.Reservation -> spec.State -> IterationResult spec
+  | Done : spec.State -> IterationResult spec
+  | Panic : spec.State -> IterationResult spec
   | Running : spec.State -> Thread spec -> IterationResult spec
 
 def IterationResult.state : IterationResult spec -> spec.State
-  | Done _ state => state
-  | Panic _ state => state
+  | Done state => state
+  | Panic state => state
   | Running state _ => state
 
-def IterationResult.reservation : IterationResult spec -> spec.Reservation
-  | Done r _ => r
-  | Panic r _ => r
-  | Running _ cont => cont.reservation
-
 def iterate : Thread spec -> spec.State -> IterationResult spec
-  | ⟨T, r, _, task⟩, state =>
-    match task.iterate r state with
-    | TaskM.IterationResult.Done r state' _ => IterationResult.Done r state'
-    | TaskM.IterationResult.Panic r state' _ => IterationResult.Panic r state'
-    | TaskM.IterationResult.Running reservation state' block_until task => 
-      IterationResult.Running state' { T, reservation, block_until, task }
+  | ⟨T, _, task⟩, state =>
+    match task.iterate state with
+    | TaskM.IterationResult.Done state' _ => IterationResult.Done state'
+    | TaskM.IterationResult.Panic state' _ => IterationResult.Panic state'
+    | TaskM.IterationResult.Running state' block_until task => 
+      IterationResult.Running state' { T, block_until, task }
 
 def valid (thread : Thread spec) : Prop :=
-  thread.task.valid thread.reservation
+  ∃ r : spec.Reservation,
+  thread.task.valid r
     thread.block_until
     (λ _ r => r = IsReservation.empty)
 
-theorem valid.def (thread : Thread spec) :
-  thread.valid = 
+-- TODO: Remove? Probably not very useful
+theorem valid_elim {thread : Thread spec}
+  (is_valid : thread.valid)
+  : ∃ r,
     ∀ env_r s,
-    thread.block_until (env_r + thread.reservation) →
-    spec.validate (env_r + thread.reservation) s →
+    thread.block_until s →
+    spec.validate (env_r + r) s → ∃ r' : spec.Reservation,
     match thread.iterate s with
-      | IterationResult.Done r' s' =>
+      | IterationResult.Done s' =>
           spec.validate (env_r + r') s' ∧
           r' = IsReservation.empty
       | IterationResult.Panic .. => False
       | IterationResult.Running s' cont =>
-        (spec.validate (env_r + cont.reservation) s') ∧ cont.valid :=by
-  simp only [valid]
-  rw [TaskM.valid]
-  
-  apply Utils.forall_ext ; intro env_r
-  apply Utils.forall_ext ; intro s
-  rw [iterate]
-
-  cases h : TaskM.iterate thread.task thread.reservation s
-  <;> simp only [h]
-
+        (spec.validate (env_r + r') s') ∧ cont.valid :=by
+  simp only []
+  cases is_valid ; rename_i r is_valid
+  exists r
+  intro env_r s bu_true initial_valid
+  rw [TaskM.valid] at is_valid
+  have is_valid :=is_valid env_r s bu_true initial_valid
+  cases is_valid
+  rename_i r' is_valid
+  exists r'
+  rw []
+  simp only [iterate]
+  cases h : TaskM.iterate thread.task s <;> simp only [h]
+  . rw [h] at is_valid ; exact is_valid
+  . rw [h] at is_valid ; contradiction
+  . rw [h] at is_valid
+    simp only [] at is_valid
+    constructor
+    . exact is_valid.left
+    . simp only [valid]
+      exists r'
+      exact is_valid.right
 
 end Thread
 
