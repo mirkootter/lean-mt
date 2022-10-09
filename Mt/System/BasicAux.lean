@@ -8,7 +8,7 @@ open Utils
 variable {spec : Spec}
 local instance : IsReservation spec.Reservation :=spec.is_reservation
 
-protected theorem decompose_reservation'' (l : List (Thread spec)) (idx : Fin l.length) t :
+/-protected theorem decompose_reservation'' (l : List (Thread spec)) (idx : Fin l.length) t :
   t = l.get idx →
   System.sum_reservations l = System.sum_reservations (l.eraseIdx idx.val) + t.reservation :=by
   intro t_def ; rw [t_def]  ; clear t_def
@@ -47,16 +47,17 @@ protected theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s
   intro thread_idx idx_correct
   exists thread_idx
   exact ⟨idx_correct, s.decompose_reservation' thread_idx t idx_correct.symm⟩
+-/
 
 theorem single_reduce_elim {s s' : System spec} (r : s.reduces_single s') :
   ∀ t', t' ∈ s'.threads → ∃ (t : _) (state : spec.State), t ∈ s.threads ∧ (
   t = t' ∨ (
-    t.block_until s.reservations ∧
+    t.block_until s.state ∧
     t.iterate s.state = Thread.IterationResult.Running state t')) :=by
   intro t' t'_def
   
   apply Exists.elim r ; intro thread_idx h
-  cases block_until : Thread.block_until (List.get s.threads thread_idx) s.reservations
+  cases block_until : Thread.block_until (List.get s.threads thread_idx) s.state
   next =>
     . exists t', s.state
       constructor
