@@ -1,6 +1,5 @@
 import Mt.Reservation
 import Mt.Task
-import Mt.System
 
 namespace SampleSimple
 
@@ -18,11 +17,11 @@ open Mt
 open Mt.TaskM
 
 def thread1 : TaskM spec Unit :=do
-  -- increase x atomically; track luft
-  atomic_read_modify λ _ s => ⟨(1 : Nat), { s with x := s.x + 1 }⟩
+  -- increase x atomically
+  atomic_read_modify λ s => { s with x := s.x + 1 }
   
-  -- increase y atomically; track luft
-  atomic_read_modify λ _ s => ⟨(0 : Nat), { s with y := s.y + 1 }⟩
+  -- increase y atomically
+  atomic_read_modify λ s => { s with y := s.y + 1 }
 
   atomic_assert fun ⟨x, y⟩ => x ≥ y
 
@@ -33,6 +32,7 @@ theorem thread1_valid : thread1.valid' (0 : Nat) :=by
     ---------------
     apply valid_rm
     intro (env_luft : Nat) ⟨x, y⟩ _ initial_valid
+    exists (1 : Nat)
     simp only [and_true]
 
     have : x ≥ y + env_luft :=initial_valid
@@ -46,6 +46,7 @@ theorem thread1_valid : thread1.valid' (0 : Nat) :=by
     --------------------------------
     apply valid_rm
     intro (env_luft : Nat) ⟨x, y⟩ _ initial_valid
+    exists (0 : Nat)
     simp only [and_true]
 
     rw [luft_def] at initial_valid

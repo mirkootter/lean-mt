@@ -1,21 +1,24 @@
 import Mt.Reservation
 import Mt.Task
-import Mt.System
 
 namespace SampleMutex
 
-structure State where
+structure Data where
   x : Nat
   y : Nat
 
-def State.valid : State -> Prop
+def Data.valid : Data -> Prop
 | ⟨x, y⟩ => x = y
 
-abbrev Reservation :=Mt.Lock State
+abbrev Reservation :=Mt.Lock Data
+
+structure State where
+  data : Data
+  locked : Bool
 
 inductive validate : Reservation -> State -> Prop where
-| unlocked {s : State} : s.valid → validate Mt.Lock.Unlocked s
-| locked (s : State) : validate (Mt.Lock.Locked s) s
+| unlocked {data : Data} : data.valid → validate Mt.Lock.Unlocked ⟨data, false⟩
+| locked (data : Data) : validate (Mt.Lock.Locked data) ⟨data, true⟩
 
 def spec : Mt.Spec :={
   State
@@ -26,72 +29,86 @@ def spec : Mt.Spec :={
 open Mt
 open Mt.TaskM
 
-/-- read-modify operation assuming the mutex is owned -/
-abbrev rm_locked (f : State -> State) : TaskM spec Unit :=
-  atomic_read_modify λ _ s => match f s with
-    | s' => ⟨Lock.Locked s', s'⟩ 
-
 def thread1 : TaskM spec Unit :=do
   -- lock mutex
-  atomic_blocking_rmr (λ r => r.is_unlocked) λ _ s => ⟨⟨⟩, Mt.Lock.Locked s, s⟩
+  atomic_blocking_rmr (λ ⟨_, locked⟩ => locked = false) λ (s : State) => ⟨⟨⟩, {s with locked :=true}⟩
   
   -- two atomic modifications, one after the other
-  rm_locked λ s => {s with x :=s.x + 1}
-  rm_locked λ s => {s with y :=s.y + 1}
+  atomic_read_modify λ s => {s with data :={s.data with x :=s.data.x + 1}}
+  atomic_read_modify λ s => {s with data :={s.data with y :=s.data.y + 1}}
   
   -- release mutex
-  atomic_read_modify λ _ s => ⟨Mt.Lock.Unlocked, s⟩
+  atomic_read_modify λ s => {s with locked :=false}
 
 def thread2 : TaskM spec Unit :=do
   -- lock mutex
-  atomic_blocking_rmr (λ r => r.is_unlocked) λ _ s => ⟨⟨⟩, Mt.Lock.Locked s, s⟩
+  atomic_blocking_rmr (λ ⟨_, locked⟩ => locked = false) λ (s : State) => ⟨⟨⟩, {s with locked :=true}⟩
   
   -- two atomic reads, one after the other
-  let px <- atomic_read λ r ⟨x, _⟩ => ⟨x, r⟩
-  let py <- atomic_read λ r ⟨_, y⟩ => ⟨y, r⟩
+  let px <- atomic_read λ s => s.data.x
+  let py <- atomic_read λ s => s.data.y
 
   atomic_assert λ _ => px = py
   
   -- release mutex
-  atomic_read_modify λ _ s => ⟨Mt.Lock.Unlocked, s⟩
+  atomic_read_modify λ s => {s with locked :=false}
 
-theorem validate.elim_unlocked {r s} :
-  validate r s → r.is_unlocked → s.valid :=by
-  intro initial_valid unlocked
-  cases initial_valid
-  . assumption
+theorem validate.elim_unlocked' {r s} :
+  validate r s → s.locked = false → r = Lock.Unlocked ∧ s.data.valid :=by
+  intro is_valid is_unlocked
+  cases is_valid
+  . constructor
+    . rfl
+    . assumption
   . contradiction
 
-theorem validate.elim_locked {env_r : Reservation} {s s'} :
-  validate (env_r + Lock.Locked s) s' →
-  env_r = Lock.Unlocked ∧ s = s' :=by
+theorem validate.elim_unlocked {r s} :
+  validate r s → r.is_unlocked → ¬ s.locked ∧ s.data.valid :=by
+  intro initial_valid unlocked
+  cases initial_valid
+  . constructor
+    . intro h ; contradiction
+    . assumption
+  . contradiction
+
+theorem validate.elim_locked {env_r : Reservation} {d s'} :
+  validate (env_r + Lock.Locked d) s' →
+  env_r = Lock.Unlocked ∧ d = s'.data ∧ s'.locked = true :=by
   intro initial_valid
   cases env_r <;> cases initial_valid
-  exact ⟨rfl, rfl⟩
+  constructor
+  . rfl
+  constructor <;> rfl
 
 theorem thread1_valid : thread1.valid' Mt.Lock.Unlocked :=by
   rw [valid']
-  apply valid_bind (spec :=spec) λ ⟨⟩ r => r.is_locked_and_valid State.valid
+  apply valid_bind (spec :=spec) λ ⟨⟩ r => r.is_locked_and_valid Data.valid
   . -- verify mutex lock
     apply valid_blocking_rmr
     simp only [spec, Lock.add_unlocked]
     intro env_r s is_unlocked initial_valid
-    have :=Lock.eq_of_is_unlocked is_unlocked
-    simp only [spec, this, Lock.unlocked_add, Lock.is_locked_and_valid]
-    exact ⟨validate.locked .., initial_valid.elim_unlocked is_unlocked⟩
+    exists Lock.Locked s.data
+
+    have is_unlocked :=of_decide_eq_true is_unlocked
+    have :=initial_valid.elim_unlocked' is_unlocked
+    
+    simp only [spec, this, Lock.is_locked_and_valid, and_true]
+    exact validate.locked ..
   
   intro r ⟨⟩ is_locked_and_valid
   cases r <;> try contradiction
-  rename_i s0
-  let ⟨x0, y0⟩ :=s0 ; clear s0
+  rename_i data0
+  let ⟨x0, y0⟩ :=data0 ; clear data0
   cases is_locked_and_valid
   apply valid_bind (spec :=spec) λ ⟨⟩ r' => r' = Lock.Locked ⟨x0 + 1, x0⟩
   . -- validate ++x
     apply valid_rm
     simp only [spec]
-    intro env_r ⟨x, y⟩ ⟨⟩ initial_valid
+    intro env_r ⟨⟨x, y⟩, locked⟩ ⟨⟩ initial_valid
+    exists Lock.Locked ⟨x0 + 1, x0⟩
+    
     simp only [initial_valid.elim_locked, Lock.unlocked_add]
-    injection initial_valid.elim_locked.right
+    injection initial_valid.elim_locked.right.left
     rename_i x0_def y0_def
     simp only [<- x0_def, <- y0_def]
     exact ⟨validate.locked _, ⟨⟩⟩
@@ -102,9 +119,10 @@ theorem thread1_valid : thread1.valid' Mt.Lock.Unlocked :=by
   . -- validate ++y
     apply valid_rm
     simp only [spec]
-    intro env_r ⟨x, y⟩ ⟨⟩ initial_valid
+    intro env_r ⟨⟨x, y⟩, locked⟩ ⟨⟩ initial_valid
+    exists Lock.Locked ⟨x0 + 1, x0 + 1⟩
     simp only [initial_valid.elim_locked, Lock.unlocked_add]
-    injection initial_valid.elim_locked.right
+    injection initial_valid.elim_locked.right.left
     rename_i x0_def y0_def
     simp only [<- x0_def, <- y0_def]
     exact ⟨validate.locked _, ⟨⟩⟩
@@ -114,8 +132,9 @@ theorem thread1_valid : thread1.valid' Mt.Lock.Unlocked :=by
   . -- validate mutex release
     apply valid_rm
     simp only [spec, Lock.add_unlocked]
-    intro env_r ⟨x, y⟩ ⟨⟩ initial_valid
-    injection initial_valid.elim_locked.right
+    intro env_r ⟨⟨x, y⟩, locked ⟩ ⟨⟩ initial_valid
+    exists Lock.Unlocked
+    injection initial_valid.elim_locked.right.left
     rename_i x_def y_def
     simp only [initial_valid.elim_locked]
     rw [x_def.symm, y_def.symm] ; clear x_def y_def
@@ -123,28 +142,33 @@ theorem thread1_valid : thread1.valid' Mt.Lock.Unlocked :=by
 
 theorem thread2_valid : thread2.valid' Mt.Lock.Unlocked :=by
   rw [valid']
-  apply valid_bind (spec :=spec) λ ⟨⟩ r => r.is_locked_and_valid State.valid
+  apply valid_bind (spec :=spec) λ ⟨⟩ r => r.is_locked_and_valid Data.valid
   . -- verify mutex lock
     apply valid_blocking_rmr
     simp only [spec, Lock.add_unlocked]
     intro env_r s is_unlocked initial_valid
-    have :=Lock.eq_of_is_unlocked is_unlocked
-    simp only [spec, this, Lock.unlocked_add, Lock.is_locked_and_valid]
-    exact ⟨validate.locked .., initial_valid.elim_unlocked is_unlocked⟩
+    exists Lock.Locked s.data
+
+    have is_unlocked :=of_decide_eq_true is_unlocked
+    have :=initial_valid.elim_unlocked' is_unlocked
+    
+    simp only [spec, this, Lock.is_locked_and_valid, and_true]
+    exact validate.locked ..
   
   intro r ⟨⟩ is_locked_and_valid
   cases r <;> try contradiction
-  rename_i s0
-  let ⟨x0, y0⟩ :=s0 ; clear s0
+  rename_i data0
+  let ⟨x0, y0⟩ :=data0 ; clear data0
   cases is_locked_and_valid
   
   apply valid_bind (spec :=spec) λ px r' => r' = Lock.Locked ⟨x0, x0⟩ ∧ px = x0
   . -- verify read of x; we should get x0
     apply valid_read
     simp only [spec]
-    intro env_r ⟨x, y⟩ ⟨⟩ initial_valid
+    intro env_r ⟨⟨x, y⟩, locked⟩ ⟨⟩ initial_valid
+    exists Lock.Locked ⟨x0, x0⟩
     simp only [initial_valid.elim_locked, Lock.unlocked_add]
-    injection initial_valid.elim_locked.right
+    injection initial_valid.elim_locked.right.left
     rename_i x0_def y0_def
     simp only [<- x0_def, <- y0_def, and_true]
     exact validate.locked _
@@ -152,16 +176,17 @@ theorem thread2_valid : thread2.valid' Mt.Lock.Unlocked :=by
   intro r px is_locked_and_valid
   cases is_locked_and_valid ; rename_i r_def px_def
   cases r <;> try contradiction
-  rename_i s0
-  let ⟨x0, y0⟩ :=s0 ; clear s0
+  rename_i data0
+  let ⟨x0, y0⟩ :=data0 ; clear data0
   cases r_def
   apply valid_bind (spec :=spec) λ py r' => r' = Lock.Locked ⟨x0, x0⟩ ∧ py = x0
   . -- verify read of x; we should get x0
     apply valid_read
     simp only [spec]
-    intro env_r ⟨x, y⟩ ⟨⟩ initial_valid
+    intro env_r ⟨⟨x, y⟩, locked⟩ ⟨⟩ initial_valid
+    exists Lock.Locked ⟨x0, x0⟩
     simp only [initial_valid.elim_locked, Lock.unlocked_add]
-    injection initial_valid.elim_locked.right
+    injection initial_valid.elim_locked.right.left
     rename_i x0_def y0_def
     simp only [<- x0_def, <- y0_def, and_true]
     exact validate.locked _
@@ -169,8 +194,8 @@ theorem thread2_valid : thread2.valid' Mt.Lock.Unlocked :=by
   intro r py is_locked_and_valid
   cases is_locked_and_valid ; rename_i r_def py_def
   cases r <;> try contradiction
-  rename_i s0
-  let ⟨x0, y0⟩ :=s0 ; clear s0
+  rename_i data0
+  let ⟨x0, y0⟩ :=data0 ; clear data0
   cases r_def
   apply valid_bind (spec :=spec) λ ⟨⟩ r' => r' = Lock.Locked ⟨x0, x0⟩
   . -- verify assertion
@@ -184,8 +209,9 @@ theorem thread2_valid : thread2.valid' Mt.Lock.Unlocked :=by
   . -- validate mutex release
     apply valid_rm
     simp only [spec, Lock.add_unlocked]
-    intro env_r ⟨x, y⟩ ⟨⟩ initial_valid
-    injection initial_valid.elim_locked.right
+    intro env_r ⟨⟨x, y⟩, locked⟩ ⟨⟩ initial_valid
+    exists Lock.Unlocked
+    injection initial_valid.elim_locked.right.left
     rename_i x_def y_def
     simp only [initial_valid.elim_locked]
     rw [x_def.symm, y_def.symm] ; clear x_def y_def

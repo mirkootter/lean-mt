@@ -42,42 +42,6 @@ def valid (thread : Thread spec) : Prop :=
     thread.block_until
     (λ _ r => r = IsReservation.empty)
 
--- TODO: Remove? Probably not very useful
-theorem valid_elim {thread : Thread spec}
-  (is_valid : thread.valid)
-  : ∃ r,
-    ∀ env_r s,
-    thread.block_until s →
-    spec.validate (env_r + r) s → ∃ r' : spec.Reservation,
-    match thread.iterate s with
-      | IterationResult.Done s' =>
-          spec.validate (env_r + r') s' ∧
-          r' = IsReservation.empty
-      | IterationResult.Panic .. => False
-      | IterationResult.Running s' cont =>
-        (spec.validate (env_r + r') s') ∧ cont.valid :=by
-  simp only []
-  cases is_valid ; rename_i r is_valid
-  exists r
-  intro env_r s bu_true initial_valid
-  rw [TaskM.valid] at is_valid
-  have is_valid :=is_valid env_r s bu_true initial_valid
-  cases is_valid
-  rename_i r' is_valid
-  exists r'
-  rw []
-  simp only [iterate]
-  cases h : TaskM.iterate thread.task s <;> simp only [h]
-  . rw [h] at is_valid ; exact is_valid
-  . rw [h] at is_valid ; contradiction
-  . rw [h] at is_valid
-    simp only [] at is_valid
-    constructor
-    . exact is_valid.left
-    . simp only [valid]
-      exists r'
-      exact is_valid.right
-
 end Thread
 
 end Mt
