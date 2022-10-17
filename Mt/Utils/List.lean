@@ -49,4 +49,17 @@ theorem erase_set {T : Type u} (l : List T) (idx : Nat) (new_value : T)
   | _::_, 0 => rfl
   | x::xs, n+1 => congrArg (x :: .) <| erase_set xs n new_value
 
+theorem eq_of_in_map {U V : Type u} {f : U -> V} {l : List U} {v : V}
+  : v ∈ (l.map f) → ∃ u, u ∈ l ∧ v = f u :=by
+  intro v_in_map
+  induction l
+  . contradiction
+  . rename_i head tail IH
+    cases v_in_map
+    . exact ⟨head, List.Mem.head .., rfl⟩
+    . rename_i v_in_map_of_tail
+      cases IH v_in_map_of_tail
+      rename_i u u_hyp
+      exact ⟨u, List.Mem.tail _ u_hyp.left, u_hyp.right⟩
+
 end Mt.Utils.List

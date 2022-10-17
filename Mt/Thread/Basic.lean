@@ -37,8 +37,7 @@ def iterate : Thread spec -> spec.State -> IterationResult spec
       IterationResult.Running state' { T, block_until, task }
 
 def valid (thread : Thread spec) : Prop :=
-  ∃ r : spec.Reservation,
-  thread.task.valid r
+  thread.task.valid IsReservation.empty
     thread.block_until
     (λ _ r => r = IsReservation.empty)
 
