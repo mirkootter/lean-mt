@@ -219,11 +219,17 @@ theorem reduces_by_iteration (s s' : System spec)
         exact blocked_until
       . simp only [iterate, TracedThread.iterate, get_idx', ts_state_eq]
         exact h
-  . have :=TracedThread.valid_elim <| ts_valid.threads_valid (ts.threads.get idx')
-      (Utils.List.get_in ..)
-    simp only [TracedThread.block_until, get_idx'] at this
-        
-    sorry
+  . rename_i state cont
+    exists ts.update_thread idx.val state r' cont
+    rw [<- iteration] ; clear iteration neq s'
+    simp only [update_thread]
+    constructor
+    . simp only [to_system, System.mk.injEq, true_and, has_traced_system, and_true]
+      -- TODO: Simple
+      sorry
+    . apply reduces_to.running idx'
+      . exact t_valid.left
+      . exact t_valid.right
 
 end TracedSystem
 
