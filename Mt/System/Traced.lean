@@ -7,7 +7,6 @@ namespace Mt.Traced
 structure TracedSystem (spec : Spec) where
   state   : spec.State
   threads : List (TracedThread spec)
-  panics  : Nat
 
 namespace TracedSystem
 
@@ -25,14 +24,12 @@ def update_thread (s : TracedSystem spec) (idx : Nat) (state : spec.State)
   (r : spec.Reservation) (cont : Thread spec) : TracedSystem spec :={
   state
   threads :=s.threads.set idx ⟨cont, r⟩
-  panics :=s.panics
 }
 
 def remove_thread (s : TracedSystem spec) (idx : Nat) (state : spec.State)
   : TracedSystem spec :={
   state
   threads :=s.threads.eraseIdx idx
-  panics :=s.panics
 }
 
 def reservations (s : TracedSystem spec) : spec.Reservation :=
@@ -47,7 +44,6 @@ theorem decompose_reservations (s : TracedSystem spec) (idx : s.ThreadIndex) :
   sorry
 
 structure valid (s : TracedSystem spec) : Prop where
-  no_panics_yet : s.panics = 0
   currently_valid : spec.validate s.reservations s.state
   threads_valid : ∀ t, t ∈ s.threads → t.valid 
 
@@ -64,12 +60,11 @@ inductive reduces_to : TracedSystem spec -> TracedSystem spec -> Prop where
 
 theorem valid_forever {s s': TracedSystem spec} :
   s.valid -> s.reduces_to s' -> s'.valid :=by
-  intro ⟨no_panics_yet, currently_valid, threads_valid⟩
+  intro ⟨currently_valid, threads_valid⟩
   intro s_to_s'
   induction s_to_s' <;> clear s s'
   . rename_i s idx state blocked_until iteration
     constructor
-    . exact no_panics_yet
     . let t :=s.threads.get idx
       have t_valid :=threads_valid t (Utils.List.get_in ..)
       conv at iteration =>
@@ -91,7 +86,6 @@ theorem valid_forever {s s': TracedSystem spec} :
       exact threads_valid t <| Utils.List.erase_subset s.threads idx.val t_hyp
   . rename_i s idx state r cont is_valid cont_valid
     constructor
-    . exact no_panics_yet
     . let s' :=s.update_thread idx.val state r cont
       have s'_def : s' = s.update_thread idx.val state r cont :=rfl
       rw [<- s'_def]
@@ -119,28 +113,25 @@ theorem valid_forever {s s': TracedSystem spec} :
       . exact threads_valid t' t'_hyp
     
   . rename_i a b _ _ _ IHab IHbc
-    have b_valid :=IHab no_panics_yet currently_valid threads_valid
-    exact IHbc b_valid.no_panics_yet b_valid.currently_valid b_valid.threads_valid
+    have b_valid :=IHab currently_valid threads_valid
+    exact IHbc b_valid.currently_valid b_valid.threads_valid
 
 def to_system (s : TracedSystem spec) : System spec :={
   state := s.state
   threads := s.threads.map λ ⟨t, _⟩ => t
-  panics := s.panics
+  panics := 0
 }
 
 def mk_initial (s : System spec) : TracedSystem spec :={
   state := s.state
   threads := s.threads.map λ t => ⟨t, IsReservation.empty⟩
-  panics := s.panics
 }
 
 theorem mk_initial.valid (s : System spec)
-  (no_panics_yet : s.panics = 0)
   (initial_valid : spec.validate IsReservation.empty s.state)
   (threads_valid : ∀ t, t ∈ s.threads → t.valid)
   : (mk_initial s).valid :=by
   constructor
-  . exact no_panics_yet
   . simp only [mk_initial]
     induction s.threads
     . exact initial_valid
@@ -154,7 +145,9 @@ theorem mk_initial.valid (s : System spec)
     rw [t_orig_hyp.right]
     exact threads_valid t_orig t_orig_hyp.left
 
-theorem mk_initial.cancels_to_system {s : System spec} :
+theorem mk_initial.cancels_to_system {s : System spec}
+  (no_panics_yet : s.panics = 0)
+  :
   (mk_initial s).to_system = s :=by
   simp only [mk_initial, to_system]
   rw [System.mk.injEq]
@@ -166,12 +159,13 @@ theorem mk_initial.cancels_to_system {s : System spec} :
     . rename_i head tail IH
       simp only [List.map]
       rw [IH]
-  . rfl
+  . exact no_panics_yet.symm
 
 theorem reduces_by_iteration (s s' : System spec)
   {idx : s.ThreadIndex}
   {ts : TracedSystem spec}
   (has_traced_system : s = ts.to_system)
+  (ts_valid : ts.valid)
   (iteration : s.iterate idx = s')
   (neq : s ≠ s')
   : ∃ ts' : TracedSystem spec,
@@ -181,23 +175,55 @@ theorem reduces_by_iteration (s s' : System spec)
   <;> simp only [h, ite_true, ite_false] at iteration
   . contradiction
   have blocked_until :=h ; clear h
+
+  have ts_state_eq : ts.state = s.state :=by rw [has_traced_system] ; rfl
+
+  let idx' : ts.ThreadIndex :=Utils.Fin.cast idx (by
+    rw [has_traced_system]
+    exact List.length_map ..)
+  have get_idx' : (ts.threads.get idx').thread = s.threads.get idx :=by
+    have :=congrArg System.threads has_traced_system
+    rw [Utils.List.get_congr idx this]
+    simp only [to_system, Utils.List.get_of_map]
+    rfl
+  
+  let env_r :=ts.other_reservations idx.val
+  have decompose : ts.reservations = env_r + _ :=ts.decompose_reservations idx'
+
+  have t_valid :=TracedThread.valid_elim
+    (ts_valid.threads_valid (ts.threads.get idx') (Utils.List.get_in ..))
+    env_r s.state
+    (by
+      simp only [TracedThread.block_until, get_idx']
+      exact blocked_until)
+    (by
+      rw [<- decompose, <- ts_state_eq]
+      exact ts_valid.currently_valid)
+  cases t_valid
+  rename_i r' t_valid
+  rw [TracedThread.iterate, get_idx'] at t_valid
+  
   cases h : (s.threads.get idx).iterate s.state
   <;> simp only [h] at iteration
+  <;> simp only [h] at t_valid
   . rename_i state
     exists ts.remove_thread idx.val state
-    rw [<- iteration]
+    rw [<- iteration] ; clear iteration neq s'
     simp only [remove_thread]
     constructor
     . simp only [to_system, has_traced_system, System.mk.injEq, and_true, true_and]
       -- TODO: Simple
       sorry
-    . apply reduces_to.done ⟨idx.val, _⟩
-      . sorry
-      . simp only [iterate, TracedThread.iterate]
-        sorry
-      . sorry
-  . sorry
-  . sorry
+    . apply reduces_to.done idx'
+      . simp only [TracedThread.block_until, get_idx', ts_state_eq]
+        exact blocked_until
+      . simp only [iterate, TracedThread.iterate, get_idx', ts_state_eq]
+        exact h
+  . have :=TracedThread.valid_elim <| ts_valid.threads_valid (ts.threads.get idx')
+      (Utils.List.get_in ..)
+    simp only [TracedThread.block_until, get_idx'] at this
+        
+    sorry
 
 end TracedSystem
 
