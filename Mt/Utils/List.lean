@@ -1,3 +1,5 @@
+import Mt.Utils.Fin
+
 namespace Mt.Utils.List
 
 theorem get_in {T : Type u} (l : List T) (idx : Fin l.length)
@@ -48,5 +50,72 @@ theorem erase_set {T : Type u} (l : List T) (idx : Nat) (new_value : T)
   | [], _ => rfl
   | _::_, 0 => rfl
   | x::xs, n+1 => congrArg (x :: .) <| erase_set xs n new_value
+
+theorem eq_of_in_map {U V : Type u} {f : U -> V} {l : List U} {v : V}
+  : v ∈ (l.map f) → ∃ u, u ∈ l ∧ v = f u :=by
+  intro v_in_map
+  induction l
+  . contradiction
+  . rename_i head tail IH
+    cases v_in_map
+    . exact ⟨head, List.Mem.head .., rfl⟩
+    . rename_i v_in_map_of_tail
+      cases IH v_in_map_of_tail
+      rename_i u u_hyp
+      exact ⟨u, List.Mem.tail _ u_hyp.left, u_hyp.right⟩
+
+theorem get_congr {T : Type u} {l l' : List T} (idx : Fin l.length)
+  (eq : l = l')
+  : l.get idx = l'.get (Fin.cast idx (congrArg _ eq)) :=Eq.rec
+    (motive :=λ l' eq => l.get idx = l'.get (Fin.cast idx (congrArg _ eq)))
+    rfl eq
+
+theorem get_congr' {T : Type u} {l l' : List T}
+  {i : Fin l.length}
+  {j : Fin l'.length}
+  (l_eq : l = l')
+  (i_eq : i.val = j.val)
+  : l.get i = l'.get j :=by
+  have : j = Fin.cast i (congrArg _ l_eq) :=Fin.eq_of_val_eq i_eq.symm
+  rw [this]
+  exact get_congr _ l_eq
+
+theorem get_of_map {U V : Type u} {f : U -> V} {l : List U}
+  {idx : Fin (l.map f).length}
+  : (l.map f).get idx = f (l.get (Fin.cast idx (List.length_map l f))) :=
+  match l, idx with
+  | head :: tail, ⟨0, isLt⟩ => rfl
+  | head :: tail, ⟨n + 1, isLt⟩ => by
+    simp only [List.map, List.get]
+    rw [get_of_map]
+    rfl
+
+theorem set_map_commutes {U V : Type u} (f : U -> V) (l : List U)
+  (idx : Nat) (new_val : U) :
+  (l.set idx new_val).map f = (l.map f).set idx (f new_val) :=by
+  revert idx
+  induction l
+  . intros ; rfl
+  . rename_i head tail IH
+    intro idx
+    cases idx
+    . rfl
+    . simp only [List.set, List.map]
+      rename_i n
+      rw [IH n]
+
+theorem erase_map_commutes {U V : Type u} (f : U -> V) (l : List U)
+  (idx : Nat) :
+  (l.eraseIdx idx).map f = (l.map f).eraseIdx idx :=by
+  revert idx
+  induction l
+  . intros ; rfl
+  . rename_i head tail IH
+    intro idx
+    cases idx
+    . rfl
+    . simp only [List.eraseIdx, List.map]
+      rename_i n
+      rw [IH n]
 
 end Mt.Utils.List

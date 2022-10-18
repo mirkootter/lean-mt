@@ -21,27 +21,17 @@ namespace System
 def ThreadIndex (s : System spec) : Type :=Fin s.threads.length
 def done (s : System spec) : Bool :=s.threads.length = 0
 
-protected def sum_reservations : List (Thread spec) -> spec.Reservation
-  | [] => IsReservation.empty
-  | thread :: threads => thread.reservation + System.sum_reservations threads
-
-def reservations (s : System spec) : spec.Reservation :=
-  System.sum_reservations s.threads
-
-def other_reservations (s : System spec) (thread_idx : s.ThreadIndex) : spec.Reservation :=
-  System.sum_reservations <| s.threads.eraseIdx thread_idx.val
-
 def iterate (s : System spec) : s.ThreadIndex -> System spec
   | thread_idx =>
-    if (s.threads.get thread_idx).block_until (s.reservations) then 
+    if (s.threads.get thread_idx).block_until s.state then 
       match (s.threads.get thread_idx).iterate s.state with
-        | Thread.IterationResult.Done _ state =>
+        | Thread.IterationResult.Done state =>
           {
             state
             threads := s.threads.eraseIdx thread_idx.val
             panics := s.panics
           }
-        | Thread.IterationResult.Panic _ state =>
+        | Thread.IterationResult.Panic state =>
           {
             state
             threads := s.threads.eraseIdx thread_idx.val
@@ -57,25 +47,25 @@ def iterate (s : System spec) : s.ThreadIndex -> System spec
       s
 
 theorem iterate_threads (s : System spec) (thread_idx : s.ThreadIndex)
-  (waited_for : (s.threads.get thread_idx).block_until s.reservations) :
+  (blocked_until : (s.threads.get thread_idx).block_until s.state) :
   (s.iterate thread_idx).threads =
     match (s.threads.get thread_idx).iterate s.state with
       | Thread.IterationResult.Done .. => s.threads.eraseIdx thread_idx.val
       | Thread.IterationResult.Panic .. => s.threads.eraseIdx thread_idx.val
       | Thread.IterationResult.Running _ thread => s.threads.set thread_idx.val thread :=by
   rw [iterate]
-  simp only [waited_for, ite_true]
+  simp only [blocked_until, ite_true]
   cases h : Thread.iterate (List.get s.threads thread_idx) s.state <;> rfl
 
 theorem iterate_panics (s : System spec) (thread_idx : s.ThreadIndex)
-  (waited_for : (s.threads.get thread_idx).block_until s.reservations) :
+  (blocked_until : (s.threads.get thread_idx).block_until s.state) :
   (s.iterate thread_idx).panics =
     match (s.threads.get thread_idx).iterate s.state with
       | Thread.IterationResult.Done .. => s.panics
       | Thread.IterationResult.Panic .. => s.panics + 1
       | Thread.IterationResult.Running .. => s.panics :=by
   rw [iterate]
-  simp only [waited_for, ite_true]
+  simp only [blocked_until, ite_true]
   cases h : Thread.iterate (List.get s.threads thread_idx) s.state <;> rfl
 
 def reduces_single (a b : System spec) : Prop :=

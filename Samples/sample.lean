@@ -1,6 +1,5 @@
 import Mt.Reservation
 import Mt.Task
-import Mt.System
 import Mt.Utils.Nat
 
 namespace Sample
@@ -39,18 +38,14 @@ open Mt
 open Mt.TaskM
 
 def thread1 : TaskM spec Unit :=do
-  -- increase x atomically; track luft
-  atomic_read_modify λ r s => ⟨
-    { r with luft := 1 },
-    { s with x := s.x + 1 }⟩
+  -- increase x atomically
+  atomic_read_modify λ s => { s with x := s.x + 1 }
   
-  -- increase y atomically; track luft
-  atomic_read_modify λ r s => ⟨
-    { r with luft := 0 },
-    { s with y := s.y + 1 }⟩
+  -- increase y atomically
+  atomic_read_modify λ s => { s with y := s.y + 1 }
 
-  let py <- atomic_read λ _ ⟨_, y⟩ => ⟨y, Reservation.mk 0 y⟩
-  let px <- atomic_read λ _ ⟨x, _⟩ => ⟨x, ReservationInstance.empty⟩
+  let py <- atomic_read λ ⟨_, y⟩ => y
+  let px <- atomic_read λ ⟨x, _⟩ => x
 
   atomic_assert fun _ => px ≥ py
 
@@ -61,6 +56,7 @@ theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
     ---------------
     apply valid_rm
     intro ⟨env_luft, env_min_x⟩ ⟨x, y⟩ _ initial_valid
+    exists ⟨1, (0 : Nat)⟩
     simp only [and_true]
 
     have : x ≥ y + env_luft ∧ x ≥ Nat.max env_min_x 0 :=initial_valid
@@ -83,6 +79,7 @@ theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
     have luft_def : luft = 1 :=luft_def
     apply valid_rm
     intro ⟨env_luft, env_min_x⟩ ⟨x, y⟩ _ initial_valid
+    exists ⟨0, min_x⟩
     simp only [and_true]
     rw [luft_def] at initial_valid
 
@@ -100,6 +97,7 @@ theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
     -------------------------------------------
     apply valid_read
     intro ⟨env_luft, (env_min_x : Nat)⟩ ⟨x, y⟩ _ initial_valid
+    exists ⟨0, y⟩
     simp only [and_true]
 
     have : x ≥ y + (env_luft + luft) ∧ x ≥ Nat.max env_min_x min_x :=initial_valid
@@ -129,7 +127,8 @@ theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
     have min_x_def : min_x = py :=min_x_def
     apply valid_read
     intro ⟨env_luft, (env_min_x : Nat)⟩ ⟨x, y⟩ _ initial_valid
-    simp only [and_true]
+    exists ⟨0, (0 : Nat)⟩
+    simp only [and_true, IsReservation.empty]
 
     have : x ≥ y + (env_luft + luft) ∧ x ≥ Nat.max env_min_x min_x :=initial_valid
     show (x ≥ y + env_luft ∧ x ≥ Nat.max env_min_x 0) ∧ x ≥ py

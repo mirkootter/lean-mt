@@ -6,23 +6,16 @@ namespace Mt
 def TaskM (spec : Spec) (T : Type) : Type :=TaskM.impl.TaskM spec T
 
 inductive TaskM.IterationResult (spec : Spec) (T : Type)
-| Done : spec.Reservation -> spec.State -> T -> IterationResult spec T
-| Panic : spec.Reservation -> spec.State -> String -> IterationResult spec T
-| Running : spec.Reservation -> spec.State ->
-    (spec.Reservation -> Bool) ->
-    TaskM spec T -> IterationResult spec T
+| Done : spec.State -> T -> IterationResult spec T
+| Panic : spec.State -> String -> IterationResult spec T
+| Running : spec.State -> (spec.State -> Bool) -> TaskM spec T -> IterationResult spec T
 
 variable {spec : Spec}
 
-def TaskM.IterationResult.reservation {T spec} : IterationResult spec T -> spec.Reservation
-| Done r .. => r
-| Panic r .. => r
-| Running r .. => r
-
 def TaskM.IterationResult.state {T spec} : IterationResult spec T -> spec.State
-| Done _ s _ => s
-| Panic _ s _ => s
-| Running _ s .. => s
+| Done s _ => s
+| Panic s _ => s
+| Running s .. => s
 
 instance TaskM.instMonad : Monad (TaskM spec) where
   pure :=impl.TaskM.pure
@@ -37,19 +30,18 @@ theorem TaskM.bind_assoc {U V W : Type}
   exact impl.TaskM.bind_assoc ..
 
 def TaskM.atomic_read_modify_read {T : Type}
-  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
+  (f : spec.State -> T × spec.State)
   : TaskM spec T :=impl.TaskM.atomic_read_modify_read f
 
 def TaskM.atomic_read_modify
-  (f : spec.Reservation -> spec.State -> spec.Reservation × spec.State)
-  : TaskM spec Unit :=
-  atomic_read_modify_read λ r s => ⟨⟨⟩, f r s⟩
+  (f : spec.State -> spec.State) : TaskM spec Unit :=
+  atomic_read_modify_read λ s => ⟨⟨⟩, f s⟩
 
 def TaskM.atomic_read {T : Type}
-  (f : spec.Reservation -> spec.State -> T × spec.Reservation)
+  (f : spec.State -> T)
   : TaskM spec T :=
-  atomic_read_modify_read λ r s => match f r s with
-    | ⟨t, r'⟩ => ⟨t, r', s⟩
+  atomic_read_modify_read λ s => match f s with
+    | t => ⟨t, s⟩
 
 def TaskM.panic {T : Type} (msg : String) : TaskM spec T :=
   impl.TaskM.panic msg
@@ -59,84 +51,84 @@ def TaskM.atomic_assert
   : TaskM spec Unit :=impl.TaskM.atomic_assert cond
 
 def TaskM.atomic_blocking_rmr
-  (block_until : spec.Reservation -> Bool)
-  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
+  (block_until : spec.State -> Bool)
+  (f : spec.State -> T × spec.State)
   : TaskM spec T :=impl.TaskM.atomic_blocking_rmr block_until f
 
 def TaskM.iterate {T : Type} : TaskM spec T ->
-  spec.Reservation -> spec.State -> IterationResult spec T :=
-  λ p r s => match p r s with
-  | impl.IterationResult.Done r' s' t => IterationResult.Done r' s' t
-  | impl.IterationResult.Panic r' s' msg => IterationResult.Panic r' s' msg
-  | impl.IterationResult.Running r' s' block_until cont =>
-      IterationResult.Running r' s' block_until cont
+  spec.State -> IterationResult spec T :=
+  λ p s => match p s with
+  | impl.IterationResult.Done s' t => IterationResult.Done s' t
+  | impl.IterationResult.Panic s' msg => IterationResult.Panic s' msg
+  | impl.IterationResult.Running s' block_until cont =>
+      IterationResult.Running s' block_until cont
 
 theorem TaskM.iterate_pure {T : Type} :
-  ∀ (r : spec.Reservation) (s : spec.State) (t : T),
-  iterate (pure t) r s = IterationResult.Done r s t :=by intros ; rfl
+  ∀ (s : spec.State) (t : T),
+  iterate (pure t) s = IterationResult.Done s t :=by intros ; rfl
 
 theorem TaskM.iterate_bind {U V : Type}
   (mu : TaskM spec U)
   (f : U -> TaskM spec V)
-  : ∀ (r : spec.Reservation) (s : spec.State),
-  iterate (mu >>= f) r s = match iterate mu r s with
-    | IterationResult.Done r' s' u => IterationResult.Running r' s' (λ _ => true) (f u)
-    | IterationResult.Panic r' s' msg => IterationResult.Panic r' s' msg
-    | IterationResult.Running r' s' block_until cont =>
-        IterationResult.Running r' s' block_until (cont >>= f) :=by
-  intro r s
+  : ∀ (s : spec.State),
+  iterate (mu >>= f) s = match iterate mu s with
+    | IterationResult.Done s' u => IterationResult.Running s' (λ _ => true) (f u)
+    | IterationResult.Panic s' msg => IterationResult.Panic s' msg
+    | IterationResult.Running s' block_until cont =>
+        IterationResult.Running s' block_until (cont >>= f) :=by
+  intro s
   simp only [Bind.bind, iterate, impl.TaskM.bind]
-  cases mu r s <;> rfl
+  cases mu s <;> rfl
 
 theorem TaskM.iterate_rmr {T : Type}
-  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
-  : ∀ r s,
-  iterate (atomic_read_modify_read f) r s = match f r s with
-    | ⟨t, r', s'⟩ => IterationResult.Done r' s' t :=by intros ; rfl
+  (f : spec.State -> T × spec.State)
+  : ∀ s,
+  iterate (atomic_read_modify_read f) s = match f s with
+    | ⟨t, s'⟩ => IterationResult.Done s' t :=by intros ; rfl
 
 theorem TaskM.iterate_rm
-  (f : spec.Reservation -> spec.State -> spec.Reservation × spec.State)
-  : ∀ r s,
-  iterate (atomic_read_modify f) r s = match f r s with
-    | ⟨r', s'⟩ => IterationResult.Done r' s' ⟨⟩ :=by
+  (f : spec.State -> spec.State)
+  : ∀ s,
+  iterate (atomic_read_modify f) s = match f s with
+    | s' => IterationResult.Done s' ⟨⟩ :=by
   apply iterate_rmr
 
 theorem TaskM.iterate_read
-  (f : spec.Reservation -> spec.State -> T × spec.Reservation)
-  : ∀ r s,
-  iterate (atomic_read f) r s = match f r s with
-    | ⟨t, r'⟩ => IterationResult.Done r' s t :=by
+  (f : spec.State -> T × spec.Reservation)
+  : ∀ s,
+  iterate (atomic_read f) s = match f s with
+    | t => IterationResult.Done s t :=by
   apply iterate_rmr
 
 theorem TaskM.iterate_panic {T : Type} (msg : String)
-  : ∀ (r : spec.Reservation) (s : spec.State),
-    iterate (panic (T :=T) msg) r s = IterationResult.Panic r s msg :=by
+  : ∀ (s : spec.State),
+    iterate (panic (T :=T) msg) s = IterationResult.Panic s msg :=by
   intros ; rfl
 
 theorem TaskM.iterate_assert
   (cond : spec.State -> Bool)
-  : ∀ r s,
-  iterate (atomic_assert cond) r s = if cond s then
-    IterationResult.Done r s ⟨⟩
+  : ∀ s,
+  iterate (atomic_assert cond) s = if cond s then
+    IterationResult.Done s ⟨⟩
   else
-    IterationResult.Panic r s "Assertion failed" :=by
-  intro r s
+    IterationResult.Panic s "Assertion failed" :=by
+  intro s
   simp only [atomic_assert, impl.TaskM.atomic_assert, iterate]
   cases cond s <;> simp only [ite_false, ite_true]
 
 theorem TaskM.iterate_blocking_rmr
-  (block_until : spec.Reservation -> Bool)
-  (f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State)
-  : ∀ r s,
-  iterate (atomic_blocking_rmr block_until f) r s = IterationResult.Running r s
+  (block_until : spec.State -> Bool)
+  (f : spec.State -> T × spec.State)
+  : ∀ s,
+  iterate (atomic_blocking_rmr block_until f) s = IterationResult.Running s
     block_until (atomic_read_modify_read f) :=by intros ; rfl
 
 inductive TaskM.is_direct_cont {T : Type} : TaskM spec T -> TaskM spec T -> Prop
 | running
     {p cont : TaskM spec T}
-    {r r' s s'}
-    {block_until : spec.Reservation -> Bool}
-    (iteration : p.iterate r s = IterationResult.Running r' s' block_until cont)
+    {s s'}
+    {block_until : spec.State -> Bool}
+    (iteration : p.iterate s = IterationResult.Running s' block_until cont)
     : is_direct_cont cont p 
 
 theorem TaskM.is_direct_cont_wf {T : Type} :
@@ -149,9 +141,9 @@ theorem TaskM.is_direct_cont_wf {T : Type} :
     constructor ; intro cont is_cont
     apply IH
     cases is_cont
-    rename_i r r' s s' block_until iteration
+    rename_i s s' block_until iteration
     rw [iterate] at iteration
-    cases h : p r s <;> rw [h] at iteration <;> try contradiction
+    cases h : p s <;> rw [h] at iteration <;> try contradiction
     injection iteration
     rename_i cont'_def ; rw [cont'_def] at h
     exact ⟨h⟩

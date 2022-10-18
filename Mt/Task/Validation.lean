@@ -7,15 +7,15 @@ variable {spec : Spec}
 local instance : IsReservation spec.Reservation :=spec.is_reservation
 
 def valid {T : Type} (p : TaskM spec T) (r : spec.Reservation)
-  (assuming : spec.Reservation -> Bool)
+  (assuming : spec.State -> Bool)
   (motive : T -> spec.Reservation -> Prop)
   : Prop :=∀ env_r s,
-    assuming (env_r + r) →
-    spec.validate (env_r + r) s →
-    match h : p.iterate r s with
-    | IterationResult.Done r' s' t => spec.validate (env_r + r') s' ∧ motive t r'
+    assuming s →
+    spec.validate (env_r + r) s → ∃ r' : spec.Reservation,
+    match h : p.iterate s with
+    | IterationResult.Done s' t => spec.validate (env_r + r') s' ∧ motive t r'
     | IterationResult.Panic .. => False
-    | IterationResult.Running r' s' block_until cont =>
+    | IterationResult.Running s' block_until cont =>
         spec.validate (env_r + r') s' ∧
         cont.valid r' block_until motive
 termination_by valid => p
@@ -29,8 +29,7 @@ theorem valid_pure {T : Type} {t : T} {r assuming motive}
   : valid (spec :=spec) (pure t) r assuming motive :=by
   rw [valid]
   intro env_r s _ initial_valid
-  rw [iterate_pure]
-  exact ⟨initial_valid, is_valid⟩
+  exists r
 
 theorem valid_bind {U V : Type}
   {mu : TaskM spec U}
@@ -46,12 +45,14 @@ theorem valid_bind {U V : Type}
   intro env_r s assuming_true initial_valid
   rw [iterate_bind]
   rw [valid] at mu_valid
-  cases iteration : iterate mu r s
+  cases iteration : iterate mu s
   all_goals (
     simp only []
     have mu_valid :=mu_valid env_r s assuming_true initial_valid
     rw [iteration] at mu_valid
     simp only [] at mu_valid
+    cases mu_valid ; rename_i r' mu_valid
+    exists r'
   )
   . exact ⟨mu_valid.left, f_valid _ _ mu_valid.right⟩
   . constructor
@@ -61,13 +62,13 @@ theorem valid_bind {U V : Type}
 termination_by valid_bind => mu
 
 theorem valid_rmr {T : Type}
-  {f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State}
+  {f : spec.State -> T × spec.State}
   {r assuming motive}
   (f_valid : ∀ env_r s,
-    assuming (env_r + r) →
-    spec.validate (env_r + r) s →
-    match f r s with
-    | ⟨t, r', s'⟩ => spec.validate (env_r + r') s' ∧ motive t r'
+    assuming s →
+    spec.validate (env_r + r) s → ∃ r' : spec.Reservation,
+    match f s with
+    | ⟨t, s'⟩ => spec.validate (env_r + r') s' ∧ motive t r'
   )
   : (atomic_read_modify_read f).valid r assuming motive :=by
   rw [valid]
@@ -76,23 +77,23 @@ theorem valid_rmr {T : Type}
   exact f_valid env_r s assuming_true initial_valid
 
 theorem valid_rm
-  {f : spec.Reservation -> spec.State -> spec.Reservation × spec.State}
+  {f : spec.State -> spec.State}
   {r assuming motive}
   (f_valid : ∀ env_r s,
-    assuming (env_r + r) →
-    spec.validate (env_r + r) s →
-    match f r s with
-    | ⟨r', s'⟩ => spec.validate (env_r + r') s' ∧ motive ⟨⟩ r')
+    assuming s →
+    spec.validate (env_r + r) s → ∃ r' : spec.Reservation,
+    match f s with
+    | s' => spec.validate (env_r + r') s' ∧ motive ⟨⟩ r')
   : (atomic_read_modify f).valid r assuming motive :=valid_rmr f_valid
 
 theorem valid_read
-  {f : spec.Reservation -> spec.State -> T × spec.Reservation}
+  {f : spec.State -> T}
   {r assuming motive}
   (f_valid : ∀ env_r s,
-    assuming (env_r + r) →
-    spec.validate (env_r + r) s →
-    match f r s with
-    | ⟨t, r'⟩ => spec.validate (env_r + r') s ∧ motive t r')
+    assuming s →
+    spec.validate (env_r + r) s → ∃ r' : spec.Reservation,
+    match f s with
+    | t => spec.validate (env_r + r') s ∧ motive t r')
   : (atomic_read f).valid r assuming motive :=valid_rmr f_valid
 
 theorem valid_assert
@@ -100,7 +101,7 @@ theorem valid_assert
   {r assuming motive}
   (motive_holds : motive ⟨⟩ r)
   (assertion_succeeds : ∀ env_r s,
-    assuming (env_r + r) →
+    assuming s →
     spec.validate (env_r + r) s →
     cond s)
   : (atomic_assert cond).valid r assuming motive :=by
@@ -109,23 +110,24 @@ theorem valid_assert
   rw [iterate_assert]
   have cond_true :=assertion_succeeds env_r s assuming_true initial_valid
   rw [cond_true]
-  simp only [ite_true]
-  exact ⟨initial_valid, motive_holds⟩
+  exists r
 
 theorem valid_blocking_rmr
-  {block_until : spec.Reservation -> Bool}
-  {f : spec.Reservation -> spec.State -> T × spec.Reservation × spec.State}
+  {block_until : spec.State -> Bool}
+  {f : spec.State -> T × spec.State}
   {r assuming motive}
   (f_valid : ∀ env_r s,
-    block_until (env_r + r) →
-    spec.validate (env_r + r) s →
-    match f r s with
-    | ⟨t, r', s'⟩ => spec.validate (env_r + r') s' ∧ motive t r'
+    block_until s →
+    spec.validate (env_r + r) s → ∃ r' : spec.Reservation,
+    match f s with
+    | ⟨t, s'⟩ => spec.validate (env_r + r') s' ∧ motive t r'
   )
   : (atomic_blocking_rmr block_until f).valid r assuming motive :=by
   rw [valid]
   intro env_r s _ initial_valid
   simp only [iterate_blocking_rmr, initial_valid, true_and]
-  exact valid_rmr f_valid
+  
+  exists r
+  exact ⟨initial_valid, valid_rmr f_valid⟩
 
 end Mt.TaskM

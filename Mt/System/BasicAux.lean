@@ -1,16 +1,48 @@
+import Mt.Thread.Traced
 import Mt.System.Basic
 import Mt.Utils.List
 
-namespace Mt.System
+namespace Mt.System.Traced
 
 open Utils
 
 variable {spec : Spec}
 local instance : IsReservation spec.Reservation :=spec.is_reservation
 
-protected theorem decompose_reservation'' (l : List (Thread spec)) (idx : Fin l.length) t :
+def sum_reservations (l : List (Traced.TracedThread spec)) : spec.Reservation :=
+  l.foldl (λ env_r thread => env_r + thread.reservation) spec.is_reservation.empty 
+
+private def sum_reservations' (start) (l : List (Traced.TracedThread spec)) :=
+  l.foldl (λ env_r thread => env_r + thread.reservation) start 
+
+protected theorem sum_reservations.helper (head : Traced.TracedThread spec) (l) :
+  sum_reservations (head :: l) = head.reservation + sum_reservations l :=by
+  have : ∀ l : List (Traced.TracedThread spec),
+    sum_reservations l = sum_reservations' IsReservation.empty l :=fun _ => rfl
+  simp only [this] ; clear this
+  simp only [add, IsReservation.empty_add]
+  rw [assoc]
+where
+  add (r) (head : Traced.TracedThread spec) (tail)
+    : sum_reservations' r (head::tail) = sum_reservations' (r + head.reservation) tail :=by
+    simp only [sum_reservations', List.foldl]
+
+  assoc (r : spec.Reservation) (l)
+    : sum_reservations' r l = r + sum_reservations' IsReservation.empty l :=by
+    revert r
+    induction l
+    . intro r
+      show r = r + IsReservation.empty
+      rw [IsReservation.toIsCommutative.comm, IsReservation.empty_add]
+    . rename_i head tail IH
+      intro r
+      simp only [add]
+      rw [IH, IsReservation.toIsAssociative.assoc, IsReservation.empty_add]
+      rw [IH head.reservation]
+
+protected theorem decompose_reservation (l : List (Traced.TracedThread spec)) (idx : Fin l.length) t :
   t = l.get idx →
-  System.sum_reservations l = System.sum_reservations (l.eraseIdx idx.val) + t.reservation :=by
+  sum_reservations l = sum_reservations (l.eraseIdx idx.val) + t.reservation :=by
   intro t_def ; rw [t_def]  ; clear t_def
   revert idx
 
@@ -22,68 +54,17 @@ protected theorem decompose_reservation'' (l : List (Thread spec)) (idx : Fin l.
     rename_i thread threads IH
     cases h : idx.val
     . have : idx = Fin.mk 0 (by simp_arith) :=Fin.eq_of_val_eq h
-      simp only [this, List.get, List.eraseIdx, System.sum_reservations]
+      simp only [this, List.get, List.eraseIdx, sum_reservations.helper]
       exact IsReservation.toIsCommutative.comm _ _
     . rename_i n
       have idx_ok : n + 1 < (thread :: threads).length :=calc
         n + 1 = idx.val :=h.symm
         _ < _ :=idx.isLt
       have : idx = Fin.mk (n + 1) idx_ok :=Fin.eq_of_val_eq h
-      simp only [this, List.get, List.eraseIdx, System.sum_reservations]
+      simp only [this, List.get, List.eraseIdx, sum_reservations.helper]
       clear this h idx
       rw [IsReservation.toIsAssociative.assoc]
       apply congrArg (thread.reservation + .)
       exact IH <| Fin.mk n (Nat.le_of_succ_le_succ idx_ok)
   
-protected theorem decompose_reservation' (s : System spec) (thread_idx : s.ThreadIndex) t :
-  t = s.threads.get thread_idx →
-  s.reservations = (s.other_reservations thread_idx) + t.reservation :=
-  System.decompose_reservation'' s.threads thread_idx t
-
-protected theorem decompose_reservation (s : System spec) { t } (t_def : t ∈ s.threads) :
-  ∃ idx : s.ThreadIndex, s.threads.get idx = t ∧
-  s.reservations = (s.other_reservations idx) + t.reservation :=by
-  apply (List.index_exists s.threads t_def).elim
-  intro thread_idx idx_correct
-  exists thread_idx
-  exact ⟨idx_correct, s.decompose_reservation' thread_idx t idx_correct.symm⟩
-
-theorem single_reduce_elim {s s' : System spec} (r : s.reduces_single s') :
-  ∀ t', t' ∈ s'.threads → ∃ (t : _) (state : spec.State), t ∈ s.threads ∧ (
-  t = t' ∨ (
-    t.block_until s.reservations ∧
-    t.iterate s.state = Thread.IterationResult.Running state t')) :=by
-  intro t' t'_def
-  
-  apply Exists.elim r ; intro thread_idx h
-  cases block_until : Thread.block_until (List.get s.threads thread_idx) s.reservations
-  next =>
-    . exists t', s.state
-      constructor
-      . simp only [iterate, block_until, ite_false] at h
-        rw [h]
-        exact t'_def
-      . exact Or.inl rfl
-  have :=iterate_threads s thread_idx block_until
-  rw [h] at this ; clear h
-  cases h' : Thread.iterate (List.get s.threads thread_idx) s.state
-  all_goals (rw [h'] at this ; simp only [] at this)
-  . have :=List.erase_subset s.threads thread_idx.val (this.subst t'_def)
-    exists t' ; exists s.state
-    exact ⟨this, Or.inl rfl⟩
-  . have :=List.erase_subset s.threads thread_idx.val (this.subst t'_def)
-    exists t' ; exists s.state
-    exact ⟨this, Or.inl rfl⟩
-  . rename_i state cont
-    cases List.set_subset s.threads thread_idx.val cont (this.subst t'_def) <;> rename_i h
-    . rw [h]
-      exists List.get s.threads thread_idx
-      exists state
-      rw [<- h']
-      constructor
-      . exact List.get_in ..
-      . exact Or.inr ⟨block_until, rfl⟩
-    . exists t' ; exists state
-      exact ⟨h, Or.inl rfl⟩
-
-end Mt.System
+end Mt.System.Traced
