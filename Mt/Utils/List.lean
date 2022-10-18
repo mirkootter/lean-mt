@@ -90,4 +90,32 @@ theorem get_of_map {U V : Type u} {f : U -> V} {l : List U}
     rw [get_of_map]
     rfl
 
+theorem set_map_commutes {U V : Type u} (f : U -> V) (l : List U)
+  (idx : Nat) (new_val : U) :
+  (l.set idx new_val).map f = (l.map f).set idx (f new_val) :=by
+  revert idx
+  induction l
+  . intros ; rfl
+  . rename_i head tail IH
+    intro idx
+    cases idx
+    . rfl
+    . simp only [List.set, List.map]
+      rename_i n
+      rw [IH n]
+
+theorem erase_map_commutes {U V : Type u} (f : U -> V) (l : List U)
+  (idx : Nat) :
+  (l.eraseIdx idx).map f = (l.map f).eraseIdx idx :=by
+  revert idx
+  induction l
+  . intros ; rfl
+  . rename_i head tail IH
+    intro idx
+    cases idx
+    . rfl
+    . simp only [List.eraseIdx, List.map]
+      rename_i n
+      rw [IH n]
+
 end Mt.Utils.List

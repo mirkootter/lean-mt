@@ -35,7 +35,36 @@ theorem fundamental_validation_theorem (s : System spec)
   
   let traced := Traced.TracedSystem.mk_initial s
   have traced_valid : traced.valid :=
-    Traced.TracedSystem.mk_initial.valid s no_panics_yet initial_valid threads_valid
+    Traced.TracedSystem.mk_initial.valid s initial_valid threads_valid
+  
+  suffices ∃ ts : Traced.TracedSystem spec, ts.to_system = s' ∧ ts.valid by
+    cases this
+    rename_i ts ts_hyp
+    simp only [<- ts_hyp.left, Traced.TracedSystem.to_system, true_and]
+    exists ts.reservations
+    exact ts_hyp.right.currently_valid
+  
+  clear initial_valid threads_valid
+  
+  suffices
+    ∀ ts : Traced.TracedSystem spec, ts.valid →
+    s = ts.to_system → ∃ ts' : Traced.TracedSystem spec, ts'.to_system = s' ∧ ts'.valid by
+    apply this traced traced_valid
+    exact Eq.symm <| Traced.TracedSystem.mk_initial.cancels_to_system no_panics_yet
 
-  sorry
+  clear traced traced_valid no_panics_yet
+  induction h
+  . clear s s' ; rename_i s s' s_to_s'
+    intro ts ts_valid s_def
+    cases s_to_s'
+    rename_i idx iteration
+    exact Traced.TracedSystem.valid_by_iteration s s' s_def ts_valid iteration
+  . rename_i a b c _ _ IHab IHbc
+    intro ts_a ts_a_valid ts_a_hyp
+    cases IHab ts_a ts_a_valid ts_a_hyp
+    rename_i ts_b ts_b_hyp
+    apply IHbc ts_b
+    . exact ts_b_hyp.right
+    . exact ts_b_hyp.left.symm
+
 end Mt.System
