@@ -68,10 +68,10 @@ theorem iterate_panics (s : System spec) (thread_idx : s.ThreadIndex)
   simp only [blocked_until, ite_true]
   cases h : Thread.iterate (List.get s.threads thread_idx) s.state <;> rfl
 
-def reduces_single (a b : System spec) : Prop :=
-  ∃ idx : a.ThreadIndex, a.iterate idx = b
+inductive reduces_to : System spec -> System spec -> Prop where
+| single {a b} (idx : a.ThreadIndex) (iteration : a.iterate idx = b) : reduces_to a b
+| trans {a b c} (a_to_b : a.reduces_to b) (b_to_c : b.reduces_to c) : reduces_to a c
 
-def reduces_to : System spec -> System spec -> Prop :=TC reduces_single
 def reduces_to_or_eq (a b : System spec) : Prop :=a = b ∨ a.reduces_to b
 
 theorem reduces_to_or_eq.refl (a : System spec) : a.reduces_to_or_eq a :=Or.inl rfl
@@ -82,7 +82,7 @@ theorem reduces_to_or_eq.trans {a b c : System spec} :
   . rw [h₁, h₂] ; exact Or.inl rfl
   . rw [h₁] ; exact Or.inr h₂
   . rw [h₂.symm] ; exact Or.inr h₁
-  . exact Or.inr <| TC.trans a b c h₁ h₂
+  . exact Or.inr <| h₁.trans h₂
 
 
 end System

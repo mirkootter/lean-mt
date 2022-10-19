@@ -53,10 +53,8 @@ theorem fundamental_validation_theorem (s : System spec)
 
   clear traced traced_valid no_panics_yet
   induction h
-  . clear s s' ; rename_i s s' s_to_s'
+  . clear s s' ; rename_i s s' idx iteration
     intro ts ts_valid s_def
-    cases s_to_s'
-    rename_i idx iteration
     exact Traced.TracedSystem.valid_by_iteration s s' s_def ts_valid iteration
   . rename_i a b c _ _ IHab IHbc
     intro ts_a ts_a_valid ts_a_hyp
