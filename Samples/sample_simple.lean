@@ -1,5 +1,5 @@
 import Mt.Reservation
-import Mt.Task
+import Mt.Thread
 
 namespace SampleSimple
 
@@ -16,7 +16,7 @@ def spec : Mt.Spec :={
 open Mt
 open Mt.TaskM
 
-def thread1 : TaskM spec Unit :=do
+def thread1 : Thread spec :=mk_thread do
   -- increase x atomically
   atomic_read_modify λ s => { s with x := s.x + 1 }
   
@@ -25,8 +25,8 @@ def thread1 : TaskM spec Unit :=do
 
   atomic_assert fun ⟨x, y⟩ => x ≥ y
 
-theorem thread1_valid : thread1.valid' (0 : Nat) :=by
-  rw [valid']
+theorem thread1_valid : thread1.valid :=by
+  rw [Thread.valid]
   apply valid_bind (spec :=spec) λ _ (luft : Nat) => luft = 1
   . -- validate ++x
     ---------------

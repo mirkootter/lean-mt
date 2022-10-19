@@ -21,9 +21,6 @@ def valid {T : Type} (p : TaskM spec T) (r : spec.Reservation)
 termination_by valid => p
 decreasing_by simp_wf ; exact is_direct_cont.running h
 
-def valid' {T : Type} (p : TaskM spec T) (r : spec.Reservation)
-  :=p.valid r (λ _ => true) (λ _ r => r = IsReservation.empty)
-
 theorem valid_pure {T : Type} {t : T} {r assuming motive}
   (is_valid : motive t r)
   : valid (spec :=spec) (pure t) r assuming motive :=by

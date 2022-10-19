@@ -1,6 +1,7 @@
 import Mt.Reservation
 import Mt.Task
 import Mt.Utils.Nat
+import Mt.Thread
 
 namespace Sample
 
@@ -37,7 +38,7 @@ def spec : Mt.Spec :={
 open Mt
 open Mt.TaskM
 
-def thread1 : TaskM spec Unit :=do
+def thread1 : Thread spec :=mk_thread do
   -- increase x atomically
   atomic_read_modify λ s => { s with x := s.x + 1 }
   
@@ -49,8 +50,8 @@ def thread1 : TaskM spec Unit :=do
 
   atomic_assert fun _ => px ≥ py
 
-theorem thread1_valid : thread1.valid' ReservationInstance.empty :=by
-  rw [valid']
+theorem thread1_valid : thread1.valid :=by
+  rw [Thread.valid]
   apply valid_bind λ _ (r : spec.Reservation) => r.luft = 1
   . -- validate ++x
     ---------------
