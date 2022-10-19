@@ -53,21 +53,12 @@ def thread2 : TaskM spec Unit :=do
   -- release mutex
   atomic_read_modify λ s => {s with locked :=false}
 
-theorem validate.elim_unlocked' {r s} :
+theorem validate.elim_unlocked {r s} :
   validate r s → s.locked = false → r = Lock.Unlocked ∧ s.data.valid :=by
   intro is_valid is_unlocked
   cases is_valid
   . constructor
     . rfl
-    . assumption
-  . contradiction
-
-theorem validate.elim_unlocked {r s} :
-  validate r s → r.is_unlocked → ¬ s.locked ∧ s.data.valid :=by
-  intro initial_valid unlocked
-  cases initial_valid
-  . constructor
-    . intro h ; contradiction
     . assumption
   . contradiction
 
@@ -90,7 +81,7 @@ theorem thread1_valid : thread1.valid' Mt.Lock.Unlocked :=by
     exists Lock.Locked s.data
 
     have is_unlocked :=of_decide_eq_true is_unlocked
-    have :=initial_valid.elim_unlocked' is_unlocked
+    have :=initial_valid.elim_unlocked is_unlocked
     
     simp only [spec, this, Lock.is_locked_and_valid, and_true]
     exact validate.locked ..
@@ -150,7 +141,7 @@ theorem thread2_valid : thread2.valid' Mt.Lock.Unlocked :=by
     exists Lock.Locked s.data
 
     have is_unlocked :=of_decide_eq_true is_unlocked
-    have :=initial_valid.elim_unlocked' is_unlocked
+    have :=initial_valid.elim_unlocked is_unlocked
     
     simp only [spec, this, Lock.is_locked_and_valid, and_true]
     exact validate.locked ..

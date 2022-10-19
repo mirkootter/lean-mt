@@ -16,8 +16,7 @@ open Utils
   iteration of the system (or the system itself), the following
   holds:
   * No threads have panicked yet (and they never will)
-  * The combination of state and thread reservations are valid
-    according to the specification
+  * Its current state is valid according to the specification
 -/
 def valid (s : System spec) : Prop :=
   ∀ s' : System spec, s.reduces_to_or_eq s' →

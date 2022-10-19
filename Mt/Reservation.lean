@@ -9,7 +9,7 @@ namespace Mt
   Basic idea: Only threads with a certain reservation are allowed to do certain
   things. In many cases, some operation cannot be done atomically. Instead,
   a thread needs to do several steps. Using reservations, the thread can keep
-  track about how many of those steps he has already accomplished. Other
+  track about how many of those steps it has already accomplished. Other
   threads have no way to manipulate each other's reservation, only their own.
 
   For reasoning, the reservations of all threads have to be taken into account.
@@ -21,7 +21,7 @@ namespace Mt
   As a consequence, we require an addition operator for reservations. Invariants
   used for reasoning may use both the shared state and the sum of all
   reservations, but not individual reservations. Each thread has to guarantee the
-  invariant, but it only knows about his own reservation, i.e. it has a lower
+  invariant, but it only knows about its own reservation, i.e. it has a lower
   bound on the reservation, but nothing more. Therefore, it's actions are limited
   by the reservation it has already achieved on its own.
 
@@ -31,10 +31,11 @@ namespace Mt
     - generate a random variable `n : Nat`
     - increase `x` by `n + 1` atomically
     - decrease `x` by `n` atomically
-  * We want to reason that - in the end - `x` is never zero
-  Solution: We introduce a `reservation : Nat` reservation which keeps track of how much
-  we have increased `x`. Therefore, the have the invariant ∑reservation = x.
-  Now, we can easily reason about the thread:
+  * We want to reason that - in the end - `x` is never zero.
+
+    Solution: We introduce a `reservation : Nat` reservation which keeps track of how much
+    we have increased `x`. Therefore, the have the invariant ∑reservation = x.
+    Now, we can easily reason about the thread:
   * Step 1: Generating the random number has no effect on the shared variable
   * Step 2: We increase `x` by `n + 1` and assign `reservation :=n + 1`. Since the
     reservations of the other threads have not changed, the invariant still holds
@@ -42,14 +43,6 @@ namespace Mt
     `reservation = n + 1`. Because of our invariant, we also know
     `x = ∑reservation ≥ reservation = n + 1`. Therefore, we can safely decrease both `x`
     and `reservation` by `n` and we still have `x > 0`
-  
-  ### Sample instance
-  ```
-  instance : @Lean.IsAssociative Nat (.+.) :=⟨Nat.add_assoc⟩
-  instance : @Lean.IsCommutative Nat (.+.) :=⟨Nat.add_comm⟩
-
-  instance a : IsReservation Nat :=⟨0, Nat.zero_add⟩
-  ```
 -/
 class IsReservation (T : Type)
   extends
@@ -64,7 +57,7 @@ class IsReservation (T : Type)
 
   This specification specifies the context for threads but not the
   threads itself. Threads encode a specification in their type. Only
-  threads with the same specification can be exected in parallel
+  threads with the same specification can be executed in parallel
 -/
 structure Spec where
   State : Type

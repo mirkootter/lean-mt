@@ -9,7 +9,7 @@ Multithreaded algorithms can be very hard to reason about. For simple problems, 
 Let us consider the following very simple example
 ```typescript
 let x : atomic<int> = 0; // Assuming sequential consistency
-let y : atmoic<int> = 0; // Assuming sequential consistency
+let y : atomic<int> = 0; // Assuming sequential consistency
 
 function thread1() {
   ++x;            // atomic increment

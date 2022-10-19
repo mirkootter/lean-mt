@@ -7,14 +7,13 @@ import Mt.System
   Both blocking and non blocking algorithms are supported.
 
   We provide types to describe systems as a list of threads
-  and to describe threads using monadic code. The fundamental
-  monad `Mt.TaskM` allows side effects like modifying shared
-  memory.
+  and to describe threads using monadic code. The monad `Mt.TaskM`
+  allows side effects like modifying shared memory.
 
-  The fundamental goal is to reason about multithreaded systems
-  by decoupling the threads from each other. We reformulate the
-  problem in a way such that it is to possible to reason about
-  one thread at a time, almost as in the single threaded case.
+  Our goal is to reason about multithreaded systems by decoupling
+  the threads from each other. We reformulate the problem in a
+  way such that it is to possible to reason about one thread at a
+  time, almost as in the single threaded case.
 
   Basic idea: To decouple threads from each other, we have to
   specify some rules. We have to prove that all threads follow
@@ -35,12 +34,11 @@ import Mt.System
     - the code to be executed (see `Mt.TaskM`)
     - a blocking predicate: The thread will sleep until this
       predicates returns `true`
-    - thread local reservations (see `Mt.IsReservation`)
   * `Mt.System`: Represents a system consisting of
     - the shared state (shared memory) used by all threads
     - a list of active threads
-    - a counter how many threads have paniced
-  * `Mt.Spec`: The specification precisely specify the
+    - a counter how many threads have panicked
+  * `Mt.Spec`: The specification precisely specifies the
     context and the required behaviour for threads. For example,
     it describes the type of the shared memory for threads and
     the invariants which all threads must enforce. Only threads
