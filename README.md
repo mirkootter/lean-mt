@@ -1,5 +1,5 @@
 # Framework for reasoning about parallel algorithms
-API Documentation: https://mirkootter.github.io/lean-mt-doc////Mt.html
+API Documentation: https://mirkootter.github.io/lean-mt-doc/Mt.html
 
 [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/mirkootter/lean-mt)
 
