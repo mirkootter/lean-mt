@@ -6,6 +6,42 @@ namespace Mt.TaskM
 variable {spec : Spec}
 local instance : IsReservation spec.Reservation :=spec.is_reservation
 
+/-- Validation primitive for reasoning for composable tasks.
+
+  Validation may assume `assuming` and must ensure the following:
+  * The task has to behave conform to the specification at all times
+  * The task never panics
+  * Finally, `motive` holds after the task completes
+
+  ### Proving `valid`
+  The definition is rather cumbersome to work with. You should use
+  helper theorems like `valid_pure`, `valid_bind`, `valid_rmr`, ...
+
+  They are designed to be used with the `apply` tactic.
+
+  ### Blocking predicate: `assuming`
+  When validating our task, we can assume `assuming state = true`. However,
+  in most cases we have `assuming = λ _ => true`, i.e. our hypothesis does
+  not provide anything useful.
+
+  There is one important exception: Blocking threads. If a thread
+  waits for a certain condition before it continues its task, we can
+  safely assume that this condition holds when the task is excuting.
+
+  ### Final goal: `motive`
+  A valid thread must drop its reservations in the end. Therefore, the
+  final goal on those tasks is `λ _ r => r = IsReservation.empty`.
+  However, intermediate tasks (i.e. single operations) do not need to
+  share this goal.
+  
+  In fact, they usally do not. If one operation
+  prepares the next operation, it usually creates some reservation to
+  ensure that no other thread undos this preparation. In this example,
+  the motive should encode that the preparation has been made.
+
+  `motive` is the only way to pass facts from one iteration to the next.
+  See `valid_bind` for more information.
+-/
 def valid {T : Type} (p : TaskM spec T) (r : spec.Reservation)
   (assuming : spec.State -> Bool)
   (motive : T -> spec.Reservation -> Prop)
@@ -21,6 +57,7 @@ def valid {T : Type} (p : TaskM spec T) (r : spec.Reservation)
 termination_by valid => p
 decreasing_by simp_wf ; exact is_direct_cont.running h
 
+/-- To prove that `pure t` is valid you need to prove that the `motive` holds -/
 theorem valid_pure {T : Type} {t : T} {r assuming motive}
   (is_valid : motive t r)
   : valid (spec :=spec) (pure t) r assuming motive :=by
@@ -28,6 +65,18 @@ theorem valid_pure {T : Type} {t : T} {r assuming motive}
   intro env_r s _ initial_valid
   exists r
 
+/-- To prove that `a >>= f` is valid you need to prove that both `a` and `f u`
+  for all results `u` are valid.
+
+  In many cases, `a` does something to prepare `f u`. Since only `f u` needs
+  to fulfil the final motive, we can choose an arbitrary motive to validate `a`
+  as "intermediate goal".
+
+  To validate `f u` with the original `motive`, we can use the fact that the
+  intermediate goal `motive_u` has been ensured by `a`. Motives use only results
+  and reservations, which cannot be changed by other threads. Therefore, they
+  stay valid even if other threads become active between `a` and `f u`. 
+-/
 theorem valid_bind {U V : Type}
   {mu : TaskM spec U}
   {f : U -> TaskM spec V}
