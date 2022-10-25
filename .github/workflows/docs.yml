@@ -3,7 +3,7 @@ name: build and deploy docs
 on:
   schedule:
     - cron: '0 */24 * * *' # every 24 hours
-
+  workflow_dispatch:
 jobs:
   build:
     name: build and deploy docs
