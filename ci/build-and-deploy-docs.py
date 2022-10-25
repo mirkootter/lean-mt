@@ -19,9 +19,11 @@ if last_commit == commit_message:
     print("Already up to date")
     exit()
 
+lake = pathlib.Path.home() / '.elan' / 'bin' / 'lake';
+
 print("Build documentation")
-run(['/root/.elan/bin/lake', 'build', '-Kenv=dev', 'Mt:docs'], check = True)
-run(['/root/.elan/bin/lake', 'build', '-Kenv=dev', 'Samples:docs'], check = True)
+run([lake, 'build', '-Kenv=dev', 'Mt:docs'], check = True)
+run([lake, 'build', '-Kenv=dev', 'Samples:docs'], check = True)
 
 print("Deploy")
 run(['git', 'init', '-b', 'main'], cwd='build/doc', check = True)
