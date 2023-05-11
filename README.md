@@ -117,7 +117,7 @@ void thread1b() {
   atomic { ++y; luft = 0; }
 
   const py = atomic { min_x = y ; y }
-  const px = y;
+  const px = x;
   
   assert (px ≥ py);
 }
